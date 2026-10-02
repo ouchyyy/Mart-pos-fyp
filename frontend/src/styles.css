@@ -3025,6 +3025,37 @@ tfoot td {
 }
 
 /* ============================================================
+   Section card — no-padding mode
+   ------------------------------------------------------------
+   When a page uses <SectionCard padding={0}>, the table
+   reaches the card's edges. Without the two rules below, the
+   bottom row is clipped by the card's rounded corner and the
+   tfoot sits right at the border. These give it back the same
+   22px of breathing room the head has, just applied to the
+   first and last rows instead of the body.
+   ============================================================ */
+
+.section-card-body.no-pad {
+  padding: 0;
+}
+
+.section-card-body.no-pad > table {
+  margin: 0;
+}
+
+.section-card-body.no-pad > table tbody tr:last-child > td {
+  padding-bottom: 18px;
+}
+
+.section-card-body.no-pad > table tfoot td {
+  padding-top: 18px;
+  padding-bottom: 22px;
+}
+
+.section-card-body.no-pad > table:not(:has(tfoot)) tbody tr:last-child > td {
+  padding-bottom: 20px;
+}
+/* ============================================================
    Reduced motion
    ============================================================ */
 
