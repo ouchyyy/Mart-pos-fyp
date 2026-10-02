@@ -88,7 +88,6 @@ export async function getBranches() {
   );
 }
 
-// One row per shop with staff count, stock units and takings.
 export async function getBranchSummary() {
   return check(await supabase.from('branch_summary').select('*').order('name'));
 }
@@ -105,8 +104,6 @@ export async function updateBranch(id, branch) {
   );
 }
 
-// We do not really delete a branch, because it may own old sales.
-// We just close it.
 export async function hideBranch(id) {
   return check(
     await supabase.from('branches').update({ is_active: false }).eq('id', id)
@@ -169,8 +166,6 @@ export async function updateProduct(id, product) {
   );
 }
 
-// We do not really delete a product, because it may appear in old
-// sales. We just hide it from every branch.
 export async function hideProduct(id) {
   return check(
     await supabase.from('products').update({ is_active: false }).eq('id', id)
@@ -267,14 +262,13 @@ export async function getBatches(productId, branchId) {
   );
 }
 
-// branchId == null means "every branch I can see" (owner only,
-// because of the RLS rule).
+// branchId == null means "every branch I can see" (owner only).
 export async function getStockHistory(branchId, productId) {
   let query = supabase
     .from('stock_movements')
     .select('*, products(name), profiles(full_name), branches(name)')
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(300);
 
   if (branchId)  query = query.eq('branch_id', branchId);
   if (productId) query = query.eq('product_id', productId);
@@ -286,9 +280,6 @@ export async function getStockHistory(branchId, productId) {
 // Sales
 // ------------------------------------------------------------
 
-// cart is a list like [{ product_id: 3, quantity: 2 }]
-// The branch is NOT passed in — the database reads it from the
-// signed-in cashier, so it can never be wrong.
 export async function saveSale(cart, moneyReceived, paymentMethod, discount) {
   const saleId = check(
     await supabase.rpc('save_sale', {
@@ -312,13 +303,12 @@ export async function getSale(id) {
   );
 }
 
-// branchId == null means "all branches" (owner only).
 export async function getSales(branchId, fromDate, toDate) {
   let query = supabase
     .from('sales')
     .select('*, profiles(full_name), branches(name, code)')
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(300);
 
   if (branchId) query = query.eq('branch_id', branchId);
   if (fromDate) query = query.gte('created_at', fromDate);
@@ -337,11 +327,65 @@ export async function cancelSale(id, reason) {
 }
 
 // ------------------------------------------------------------
-// Reports
+// Sales by product — every product that sold in a period
 //
-// Every function here takes a branchId. Pass null to cover the
-// whole franchise — the RLS rules make sure only the owner can
-// actually get away with that.
+// Groups sale_items by product and totals the units sold, the
+// funds received, and how many distinct sales contained the
+// product. That last number is what the "Times sold" column
+// shows — three bottles in one sale is one sale, not three.
+// ------------------------------------------------------------
+export async function getSalesByProduct(branchId, fromDate, toDate) {
+  let q = supabase
+    .from('sale_items')
+    .select(
+      'product_id, product_name, price, quantity, line_total, sales!inner(id, created_at, status, branch_id)'
+    )
+    .eq('sales.status', 'completed');
+
+  if (branchId) q = q.eq('sales.branch_id', branchId);
+  if (fromDate) q = q.gte('sales.created_at', fromDate);
+  if (toDate)   q = q.lte('sales.created_at', toDate + 'T23:59:59');
+
+  const rows = check(await q);
+
+  const totals = {};
+
+  for (const row of rows) {
+    const key = row.product_id;
+
+    if (!totals[key]) {
+      totals[key] = {
+        product_id: row.product_id,
+        product_name: row.product_name,
+        unit_cost: Number(row.price),
+        quantity_sold: 0,
+        funds_received: 0,
+        sale_ids: new Set(),
+      };
+    }
+
+    totals[key].quantity_sold += row.quantity;
+    totals[key].funds_received += Number(row.line_total);
+    totals[key].sale_ids.add(row.sales.id);
+  }
+
+  const list = Object.values(totals).map((t) => ({
+    product_id: t.product_id,
+    product_name: t.product_name,
+    unit_cost: t.unit_cost,
+    quantity_sold: t.quantity_sold,
+    funds_received: t.funds_received,
+    sales_count: t.sale_ids.size,
+  }));
+
+  // Best-earning product first.
+  list.sort((a, b) => b.funds_received - a.funds_received);
+
+  return list;
+}
+
+// ------------------------------------------------------------
+// Reports
 // ------------------------------------------------------------
 
 export async function getSalesSince(branchId, fromDate) {
@@ -458,9 +502,6 @@ export async function getPaymentSplit(branchId, fromDate) {
   return Object.values(totals);
 }
 
-// One branch's low-stock list. A chain owner who wants to see
-// every shop's low stock switches branch on the menu, which is
-// how a shopkeeper actually checks up on a branch.
 export async function getLowStock(branchId) {
   const rows = check(
     await supabase.rpc('products_for_branch', { the_branch_id: branchId })
@@ -493,14 +534,14 @@ export async function getExpiringSoon(branchId) {
 // Staff
 // ------------------------------------------------------------
 
-// branchId == null means "everyone" (owner only).
-export async function getStaff(branchId) {
+export async function getStaff(branchId, includeInactive = false) {
   let query = supabase
     .from('profiles')
     .select('*, branches(id, name, code)')
     .order('full_name');
 
   if (branchId) query = query.eq('branch_id', branchId);
+  if (!includeInactive) query = query.eq('is_active', true);
 
   return check(await query);
 }
@@ -573,47 +614,4 @@ export function resetStaffPassword(userId, password) {
     user_id: userId,
     password,
   });
-}
-
-// ------------------------------------------------------------
-export async function getSalesByProduct(branchId, fromDate, toDate) {
-  let q = supabase
-    .from('sale_items')
-    .select(
-      'product_id, product_name, price, quantity, line_total, ' +
-        'products(selling_price), ' +
-        'sales!inner(branch_id, created_at, status)'
-    )
-    .eq('sales.status', 'completed');
-
-  if (branchId) q = q.eq('sales.branch_id', branchId);
-  if (fromDate) q = q.gte('sales.created_at', fromDate);
-  if (toDate) q = q.lte('sales.created_at', toDate + 'T23:59:59');
-
-  const rows = check(await q);
-
-  const totals = {};
-  for (const row of rows) {
-    const key = row.product_id;
-    if (!totals[key]) {
-      totals[key] = {
-        id: key,
-        name: row.product_name,
-        unitPrice: Number(row.price),
-        currentPrice: row.products
-          ? Number(row.products.selling_price)
-          : Number(row.price),
-        quantity: 0,
-        money: 0,
-        sales: 0,
-      };
-    }
-    totals[key].quantity += row.quantity;
-    totals[key].money += Number(row.line_total);
-    totals[key].sales += 1;
-  }
-
-  const list = Object.values(totals);
-  list.sort((a, b) => b.money - a.money);
-  return list;
 }
