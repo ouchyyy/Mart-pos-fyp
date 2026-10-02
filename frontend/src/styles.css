@@ -54,11 +54,11 @@
   --teal:        #14b8a6;
 
   /* Sidebar */
-  --nav-bg-top:  #8c1c13;
-  --nav-bg-bot:  #8c1c13;
-  --nav-ink:     #9ba3ad;
-  --nav-hover:   rgba(255, 255, 255, 0.055);
-  --nav-line:    rgba(255, 255, 255, 0.07);
+  --nav-bg-top:  #1e293b;
+  --nav-bg-bot:  #0f172a;
+  --nav-ink:     #94a3b8;
+  --nav-hover:   rgba(255, 255, 255, 0.06);
+  --nav-line:    rgba(255, 255, 255, 0.08);
   --nav-width:   224px;
 
   /* Shadows */
