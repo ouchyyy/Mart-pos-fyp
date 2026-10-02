@@ -4,7 +4,7 @@
 // Two sections:
 //
 //   Sales by product   rank, times sold, units, share of funds
-//   Sales list         every individual sale, with receipts
+//   Invoice            every individual sale, with receipts
 //
 // Both follow the same filter bar — date range, branch (owner
 // only) and search. Change the filter, both sections update.
@@ -78,17 +78,6 @@ export default function Sales({ user, branchId, branches }) {
     }
   }
 
-  async function handleCancel(sale) {
-    const reason = window.prompt('Why is this sale being cancelled?');
-    if (!reason) return;
-    try {
-      await cancelSale(sale.id, reason);
-      load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   const shownSales = sales.filter((sale) => {
     if (search === '') return true;
     const text = search.toLowerCase();
@@ -122,10 +111,6 @@ export default function Sales({ user, branchId, branches }) {
   const average = completed > 0 ? total / completed : 0;
   const cancelled = sales.length - completed;
 
-  const totalUnitsSold = byProduct.reduce(
-    (sum, row) => sum + row.quantity_sold,
-    0
-  );
   const totalFundsReceived = byProduct.reduce(
     (sum, row) => sum + row.funds_received,
     0
@@ -137,7 +122,6 @@ export default function Sales({ user, branchId, branches }) {
     pickedBranch !== '' ||
     search !== '';
 
-  // A small colour for the top three ranks, and grey for the rest.
   function rankTone(index) {
     if (index === 0) return 'gold';
     if (index === 1) return 'silver';
@@ -276,15 +260,6 @@ export default function Sales({ user, branchId, branches }) {
       <SectionCard
         icon={<PackageIcon />}
         title="Sales by product"
-        count={
-          byProduct.length +
-          (byProduct.length === 1
-            ? ' product sold · '
-            : ' products sold · ') +
-          totalUnitsSold +
-          ' units · ' +
-          money(totalFundsReceived)
-        }
         padding={0}
       >
         <table className="sales-table">
@@ -330,26 +305,6 @@ export default function Sales({ user, branchId, branches }) {
               );
             })}
           </tbody>
-          {shownProducts.length > 0 && (
-            <tfoot>
-              <tr>
-                <td></td>
-                <td>
-                  <strong>Total</strong>
-                </td>
-                <td className="right number">
-                  <strong>{completed}</strong>
-                </td>
-                <td></td>
-                <td className="right number">
-                  <strong>{totalUnitsSold}</strong>
-                </td>
-                <td className="right number">
-                  <strong>{money(totalFundsReceived)}</strong>
-                </td>
-              </tr>
-            </tfoot>
-          )}
         </table>
 
         {!loading && shownProducts.length === 0 && (
@@ -362,14 +317,9 @@ export default function Sales({ user, branchId, branches }) {
       </SectionCard>
 
       {/* ============================================================
-          SALES LIST
+          INVOICE LIST
           ============================================================ */}
-      <SectionCard
-        icon={<SalesIcon />}
-        title="Sales list"
-        count={shownSales.length + ' of ' + sales.length + ' sales'}
-        padding={0}
-      >
+      <SectionCard icon={<SalesIcon />} title="Invoice" padding={0}>
         <table className="sales-table">
           <thead>
             <tr>
@@ -379,7 +329,7 @@ export default function Sales({ user, branchId, branches }) {
               <th>Served by</th>
               <th className="right">Discount</th>
               <th className="right">Total</th>
-              <th style={{ width: 180 }}></th>
+              <th style={{ width: 120 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -433,14 +383,6 @@ export default function Sales({ user, branchId, branches }) {
                     >
                       Receipt
                     </button>
-                    {sale.status === 'completed' && isOwner && (
-                      <button
-                        className="small danger"
-                        onClick={() => handleCancel(sale)}
-                      >
-                        Cancel
-                      </button>
-                    )}
                     {sale.status !== 'completed' && (
                       <span className="tag warning">cancelled</span>
                     )}
