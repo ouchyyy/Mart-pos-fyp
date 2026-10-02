@@ -1,15 +1,21 @@
 // ============================================================
 // App.jsx
 //
-// The menu has three kinds of item now:
+// The sidebar has three groups:
 //
-//   MenuButton   a plain page link
-//   MenuGroup    a parent with a chevron, expanding to children
-//   MenuChild    an item inside a group, indented
+//   Main     Dashboard, Sales
+//   Manage   Stock, Movements, Products, Reports
+//   Setting  Staff, Branches
 //
-// Groups remember whether they are open, and auto-open when the
-// page you are on is one of their children — so reloading the
-// app on "Stock out" leaves the Movements group expanded.
+// The owner sees a narrower menu than a branch admin — the
+// Stock and Products pages are hidden, because those are
+// day-to-day jobs for the shop floor, not for head office.
+//
+// Cashiers see only Sales and the till.
+//
+// The Movements group expands to Stock in / Stock out. It stays
+// open when you are on either child page, so a reload does not
+// hide the item you are looking at.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -52,8 +58,7 @@ export default function App() {
   const [branchId, setBranchId] = useState(null);
   const [branches, setBranches] = useState([]);
 
-  // Which groups are open. Keyed by the group's name so adding
-  // another one later is a one-line change.
+  // Which collapsible groups are open.
   const [openGroups, setOpenGroups] = useState({
     movements: false,
     setting: false,
@@ -83,9 +88,8 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Auto-open whichever group the current page belongs to. This
-  // is what makes a hard refresh land on the right page with its
-  // parent already expanded.
+  // Auto-open whichever group the current page belongs to, so a
+  // hard reload does not hide the item you are on.
   useEffect(() => {
     if (page === 'movements-in' || page === 'movements-out') {
       setOpenGroups((g) => (g.movements ? g : { ...g, movements: true }));
@@ -137,7 +141,8 @@ export default function App() {
   const isOwner = user.role === 'owner';
   const isAdmin = user.role === 'admin' || isOwner;
 
-  // Reports and Sales have their own branch selector.
+  // Reports and Sales have their own branch selector, so the
+  // menu one is hidden there to avoid two competing controls.
   const showBranchPicker =
     isOwner &&
     page !== 'dashboard' &&
@@ -171,7 +176,6 @@ export default function App() {
 
         {/* ---------- Main ---------- */}
         <div className="menu-section">
-
           {isOwner && (
             <MenuButton
               name="dashboard"
@@ -204,14 +208,18 @@ export default function App() {
         {/* ---------- Manage ---------- */}
         {isAdmin && (
           <div className="menu-section">
-      
-            <MenuButton
-              name="stock"
-              label="Stock"
-              Icon={StockIcon}
-              page={page}
-              setPage={setPage}
-            />
+            {/* Stock and Products are for the shop floor. Hidden
+                from the owner, who looks at the chain, not one
+                shelf. */}
+            {!isOwner && (
+              <MenuButton
+                name="stock"
+                label="Stock"
+                Icon={StockIcon}
+                page={page}
+                setPage={setPage}
+              />
+            )}
 
             <MenuGroup
               name="movements"
@@ -219,7 +227,6 @@ export default function App() {
               Icon={MovementsIcon}
               open={openGroups.movements}
               onToggle={() => toggleGroup('movements')}
-              page={page}
             >
               <MenuChild
                 name="movements-in"
@@ -237,13 +244,16 @@ export default function App() {
               />
             </MenuGroup>
 
-            <MenuButton
-              name="products"
-              label="Products"
-              Icon={ProductsIcon}
-              page={page}
-              setPage={setPage}
-            />
+            {!isOwner && (
+              <MenuButton
+                name="products"
+                label="Products"
+                Icon={ProductsIcon}
+                page={page}
+                setPage={setPage}
+              />
+            )}
+
             <MenuButton
               name="reports"
               label="Reports"
@@ -257,14 +267,12 @@ export default function App() {
         {/* ---------- Setting ---------- */}
         {isAdmin && (
           <div className="menu-section">
-
             <MenuGroup
               name="setting"
               label="Setting"
               Icon={SettingsIcon}
               open={openGroups.setting}
               onToggle={() => toggleGroup('setting')}
-              page={page}
             >
               <MenuChild
                 name="staff"
@@ -315,7 +323,12 @@ export default function App() {
           />
         )}
 
-        {isAdmin && page === 'stock' && <Stock branchId={branchId} />}
+        {/* The page render also checks !isOwner, so the owner
+            cannot reach Stock or Products even by typing the
+            page name directly. */}
+        {isAdmin && !isOwner && page === 'stock' && (
+          <Stock branchId={branchId} />
+        )}
 
         {isAdmin && page === 'movements-in' && (
           <Movements branchId={branchId} mode="in" />
@@ -324,7 +337,9 @@ export default function App() {
           <Movements branchId={branchId} mode="out" />
         )}
 
-        {isAdmin && page === 'products' && <Products branchId={branchId} />}
+        {isAdmin && !isOwner && page === 'products' && (
+          <Products branchId={branchId} />
+        )}
 
         {isAdmin && page === 'reports' && (
           <Reports
@@ -359,7 +374,7 @@ function MenuButton({ name, label, Icon, page, setPage }) {
   );
 }
 
-function MenuGroup({ label, Icon, open, onToggle, children, page }) {
+function MenuGroup({ label, Icon, open, onToggle, children }) {
   return (
     <div className="menu-group">
       <button
