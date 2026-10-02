@@ -3,14 +3,11 @@
 //
 // Two sections:
 //
-//   Sales by product   aggregated totals per product
+//   Sales by product   rank, times sold, units, share of funds
 //   Sales list         every individual sale, with receipts
 //
 // Both follow the same filter bar — date range, branch (owner
 // only) and search. Change the filter, both sections update.
-//
-// The owner sees every branch by default. An admin sees their
-// own. A cashier does not reach this page.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -60,8 +57,6 @@ export default function Sales({ user, branchId, branches }) {
           : Number(pickedBranch)
         : branchId;
 
-      // Both queries run at once — two round trips in parallel
-      // instead of one after the other.
       const [salesList, productList] = await Promise.all([
         getSales(filter, fromDate, toDate),
         getSalesByProduct(filter, fromDate, toDate),
@@ -94,7 +89,6 @@ export default function Sales({ user, branchId, branches }) {
     }
   }
 
-  // ---------- filter by search ----------
   const shownSales = sales.filter((sale) => {
     if (search === '') return true;
     const text = search.toLowerCase();
@@ -113,7 +107,7 @@ export default function Sales({ user, branchId, branches }) {
     return row.product_name.toLowerCase().includes(search.toLowerCase());
   });
 
-  // ---------- summary numbers ----------
+  // ---------- summary ----------
   let total = 0;
   let discounts = 0;
   let completed = 0;
@@ -128,7 +122,6 @@ export default function Sales({ user, branchId, branches }) {
   const average = completed > 0 ? total / completed : 0;
   const cancelled = sales.length - completed;
 
-  // Product table totals — for its footer row.
   const totalUnitsSold = byProduct.reduce(
     (sum, row) => sum + row.quantity_sold,
     0
@@ -144,6 +137,14 @@ export default function Sales({ user, branchId, branches }) {
     pickedBranch !== '' ||
     search !== '';
 
+  // A small colour for the top three ranks, and grey for the rest.
+  function rankTone(index) {
+    if (index === 0) return 'gold';
+    if (index === 1) return 'silver';
+    if (index === 2) return 'bronze';
+    return 'plain';
+  }
+
   return (
     <div>
       <PageHeader
@@ -158,7 +159,7 @@ export default function Sales({ user, branchId, branches }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* ---------- four KPI cards ---------- */}
+      {/* ---------- KPI cards ---------- */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -173,7 +174,9 @@ export default function Sales({ user, branchId, branches }) {
           tone="violet"
           label="Average sale"
           value={money(average)}
-          note={fromDate || toDate ? 'In the chosen period' : 'Across all sales'}
+          note={
+            fromDate || toDate ? 'In the chosen period' : 'Across all sales'
+          }
           noteTone="grey"
         />
         <StatCard
@@ -194,7 +197,7 @@ export default function Sales({ user, branchId, branches }) {
         />
       </div>
 
-      {/* ---------- filter bar (shared by both sections) ---------- */}
+      {/* ---------- filter bar ---------- */}
       <div
         className="box"
         style={{
@@ -275,16 +278,19 @@ export default function Sales({ user, branchId, branches }) {
         title="Sales by product"
         count={
           byProduct.length +
-          (byProduct.length === 1 ? ' product sold · ' : ' products sold · ') +
+          (byProduct.length === 1
+            ? ' product sold · '
+            : ' products sold · ') +
           totalUnitsSold +
           ' units · ' +
           money(totalFundsReceived)
         }
         padding={0}
       >
-        <table>
+        <table className="sales-table">
           <thead>
             <tr>
+              <th style={{ width: 44 }}></th>
               <th>Product</th>
               <th className="right">Times sold</th>
               <th className="right">Unit price</th>
@@ -293,21 +299,41 @@ export default function Sales({ user, branchId, branches }) {
             </tr>
           </thead>
           <tbody>
-            {shownProducts.map((row) => (
-              <tr key={row.product_id}>
-                <td style={{ fontWeight: 500 }}>{row.product_name}</td>
-                <td className="right number">{row.sales_count}</td>
-                <td className="right number">{money(row.unit_cost)}</td>
-                <td className="right number">{row.quantity_sold}</td>
-                <td className="right number" style={{ fontWeight: 600 }}>
-                  {money(row.funds_received)}
-                </td>
-              </tr>
-            ))}
+            {shownProducts.map((row, index) => {
+              const share =
+                totalFundsReceived > 0
+                  ? (row.funds_received / totalFundsReceived) * 100
+                  : 0;
+
+              return (
+                <tr key={row.product_id}>
+                  <td>
+                    <span className={'rank-badge ' + rankTone(index)}>
+                      {index + 1}
+                    </span>
+                  </td>
+                  <td className="sales-product-name">{row.product_name}</td>
+                  <td className="right number">{row.sales_count}</td>
+                  <td className="right number">{money(row.unit_cost)}</td>
+                  <td className="right number">{row.quantity_sold}</td>
+                  <td className="right">
+                    <div className="funds-cell">
+                      <span className="funds-amount number">
+                        {money(row.funds_received)}
+                      </span>
+                      <span className="funds-share grey number">
+                        {share.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           {shownProducts.length > 0 && (
             <tfoot>
               <tr>
+                <td></td>
                 <td>
                   <strong>Total</strong>
                 </td>
@@ -344,7 +370,7 @@ export default function Sales({ user, branchId, branches }) {
         count={shownSales.length + ' of ' + sales.length + ' sales'}
         padding={0}
       >
-        <table>
+        <table className="sales-table">
           <thead>
             <tr>
               {isOwner && <th>Branch</th>}
@@ -353,7 +379,7 @@ export default function Sales({ user, branchId, branches }) {
               <th>Served by</th>
               <th className="right">Discount</th>
               <th className="right">Total</th>
-              <th></th>
+              <th style={{ width: 180 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -363,18 +389,17 @@ export default function Sales({ user, branchId, branches }) {
                 style={{ opacity: sale.status === 'completed' ? 1 : 0.55 }}
               >
                 {isOwner && (
-                  <td className="small-text">
-                    {sale.branches ? sale.branches.name : '-'}
+                  <td>
+                    {sale.branches ? (
+                      <span className="branch-tag">
+                        {sale.branches.name}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
                   </td>
                 )}
-                <td className="number">
-                  {sale.invoice_no}
-                  {sale.status !== 'completed' && (
-                    <span className="tag warning" style={{ marginLeft: 6 }}>
-                      cancelled
-                    </span>
-                  )}
-                </td>
+                <td className="number small-text">{sale.invoice_no}</td>
                 <td className="small-text grey">
                   {dateAndTime(sale.created_at)}
                 </td>
@@ -384,7 +409,8 @@ export default function Sales({ user, branchId, branches }) {
                     : 'Deleted account'}
                 </td>
                 <td className="right number">
-                  {Number(sale.discount) + Number(sale.item_discount || 0) > 0 ? (
+                  {Number(sale.discount) + Number(sale.item_discount || 0) >
+                  0 ? (
                     <span className="discount-line">
                       -
                       {money(
@@ -396,22 +422,29 @@ export default function Sales({ user, branchId, branches }) {
                     <span className="grey">-</span>
                   )}
                 </td>
-                <td className="right number">{money(sale.total)}</td>
-                <td className="right" style={{ whiteSpace: 'nowrap' }}>
-                  <button
-                    className="small"
-                    onClick={() => showReceipt(sale.id)}
-                  >
-                    Receipt
-                  </button>{' '}
-                  {sale.status === 'completed' && isOwner && (
+                <td className="right number total-cell">
+                  {money(sale.total)}
+                </td>
+                <td className="right">
+                  <div className="row-actions">
                     <button
-                      className="small danger"
-                      onClick={() => handleCancel(sale)}
+                      className="small"
+                      onClick={() => showReceipt(sale.id)}
                     >
-                      Cancel
+                      Receipt
                     </button>
-                  )}
+                    {sale.status === 'completed' && isOwner && (
+                      <button
+                        className="small danger"
+                        onClick={() => handleCancel(sale)}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    {sale.status !== 'completed' && (
+                      <span className="tag warning">cancelled</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
