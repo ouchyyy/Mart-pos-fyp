@@ -592,7 +592,7 @@ tfoot td {
 
 /* ---------- sidebar sections ---------- */
 
-.menu-section { margin-bottom: 0; }
+.menu-section { margin-bottom: 18px; }
 
 .menu-section-label {
   font-size: 10px;
