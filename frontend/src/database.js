@@ -574,3 +574,46 @@ export function resetStaffPassword(userId, password) {
     password,
   });
 }
+
+// ------------------------------------------------------------
+export async function getSalesByProduct(branchId, fromDate, toDate) {
+  let q = supabase
+    .from('sale_items')
+    .select(
+      'product_id, product_name, price, quantity, line_total, ' +
+        'products(selling_price), ' +
+        'sales!inner(branch_id, created_at, status)'
+    )
+    .eq('sales.status', 'completed');
+
+  if (branchId) q = q.eq('sales.branch_id', branchId);
+  if (fromDate) q = q.gte('sales.created_at', fromDate);
+  if (toDate) q = q.lte('sales.created_at', toDate + 'T23:59:59');
+
+  const rows = check(await q);
+
+  const totals = {};
+  for (const row of rows) {
+    const key = row.product_id;
+    if (!totals[key]) {
+      totals[key] = {
+        id: key,
+        name: row.product_name,
+        unitPrice: Number(row.price),
+        currentPrice: row.products
+          ? Number(row.products.selling_price)
+          : Number(row.price),
+        quantity: 0,
+        money: 0,
+        sales: 0,
+      };
+    }
+    totals[key].quantity += row.quantity;
+    totals[key].money += Number(row.line_total);
+    totals[key].sales += 1;
+  }
+
+  const list = Object.values(totals);
+  list.sort((a, b) => b.money - a.money);
+  return list;
+}
