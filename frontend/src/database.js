@@ -330,15 +330,14 @@ export async function cancelSale(id, reason) {
 // Sales by product — every product that sold in a period
 //
 // Groups sale_items by product and totals the units sold, the
-// funds received, and how many distinct sales contained the
-// product. That last number is what the "Times sold" column
-// shows — three bottles in one sale is one sale, not three.
+// funds received, the discount taken, and how many distinct
+// sales contained the product.
 // ------------------------------------------------------------
 export async function getSalesByProduct(branchId, fromDate, toDate) {
   let q = supabase
     .from('sale_items')
     .select(
-      'product_id, product_name, price, quantity, line_total, sales!inner(id, created_at, status, branch_id)'
+      'product_id, product_name, price, quantity, discount, line_total, sales!inner(id, created_at, status, branch_id)'
     )
     .eq('sales.status', 'completed');
 
@@ -360,12 +359,14 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
         unit_cost: Number(row.price),
         quantity_sold: 0,
         funds_received: 0,
+        total_discount: 0,
         sale_ids: new Set(),
       };
     }
 
     totals[key].quantity_sold += row.quantity;
     totals[key].funds_received += Number(row.line_total);
+    totals[key].total_discount += Number(row.discount || 0);
     totals[key].sale_ids.add(row.sales.id);
   }
 
@@ -375,6 +376,10 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
     unit_cost: t.unit_cost,
     quantity_sold: t.quantity_sold,
     funds_received: t.funds_received,
+    total_discount: t.total_discount,
+    // The average discount taken on each unit of this product.
+    discount_per_unit:
+      t.quantity_sold > 0 ? t.total_discount / t.quantity_sold : 0,
     sales_count: t.sale_ids.size,
   }));
 
