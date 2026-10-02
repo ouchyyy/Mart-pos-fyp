@@ -3,7 +3,7 @@
 //
 // Two sections:
 //
-//   Sales by product   rank, times sold, units, share of funds
+//   Sales by product   product, unit price, quantity, funds
 //   Invoice            every individual sale, with receipts
 //
 // Both follow the same filter bar — date range, branch (owner
@@ -14,7 +14,6 @@ import { useState, useEffect } from 'react';
 import {
   getSales,
   getSale,
-  cancelSale,
   getSalesByProduct,
 } from '../database';
 import { money, dateAndTime } from '../money';
@@ -110,11 +109,6 @@ export default function Sales({ user, branchId, branches }) {
   }
   const average = completed > 0 ? total / completed : 0;
   const cancelled = sales.length - completed;
-
-  const totalFundsReceived = byProduct.reduce(
-    (sum, row) => sum + row.funds_received,
-    0
-  );
 
   const hasFilter =
     fromDate !== '' ||
@@ -267,43 +261,27 @@ export default function Sales({ user, branchId, branches }) {
             <tr>
               <th style={{ width: 44 }}></th>
               <th>Product</th>
-              <th className="right">Times sold</th>
               <th className="right">Unit price</th>
               <th className="right">Quantity sold</th>
               <th className="right">Funds received</th>
             </tr>
           </thead>
           <tbody>
-            {shownProducts.map((row, index) => {
-              const share =
-                totalFundsReceived > 0
-                  ? (row.funds_received / totalFundsReceived) * 100
-                  : 0;
-
-              return (
-                <tr key={row.product_id}>
-                  <td>
-                    <span className={'rank-badge ' + rankTone(index)}>
-                      {index + 1}
-                    </span>
-                  </td>
-                  <td className="sales-product-name">{row.product_name}</td>
-                  <td className="right number">{row.sales_count}</td>
-                  <td className="right number">{money(row.unit_cost)}</td>
-                  <td className="right number">{row.quantity_sold}</td>
-                  <td className="right">
-                    <div className="funds-cell">
-                      <span className="funds-amount number">
-                        {money(row.funds_received)}
-                      </span>
-                      <span className="funds-share grey number">
-                        {share.toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {shownProducts.map((row, index) => (
+              <tr key={row.product_id}>
+                <td>
+                  <span className={'rank-badge ' + rankTone(index)}>
+                    {index + 1}
+                  </span>
+                </td>
+                <td className="sales-product-name">{row.product_name}</td>
+                <td className="right number">{money(row.unit_cost)}</td>
+                <td className="right number">{row.quantity_sold}</td>
+                <td className="right number total-cell">
+                  {money(row.funds_received)}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -325,7 +303,7 @@ export default function Sales({ user, branchId, branches }) {
             <tr>
               {isOwner && <th>Branch</th>}
               <th>Invoice</th>
-              <th>When</th>
+              <th>Time</th>
               <th>Served by</th>
               <th className="right">Discount</th>
               <th className="right">Total</th>
