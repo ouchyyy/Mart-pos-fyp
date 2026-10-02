@@ -341,3 +341,26 @@ export function RotateIcon() {
     </svg>
   );
 }
+
+export function ReceiptIcon() {
+  return (
+    <svg {...base}>
+      <path d="M5 3v18l3-2 3 2 3-2 3 2 3-2V3H5z" />
+      <path d="M9 8h6" />
+      <path d="M9 12h6" />
+      <path d="M9 16h3" />
+    </svg>
+  );
+}
+
+export function PackageIcon() {
+  return (
+    <svg {...base}>
+      <path d="M16 16v6" />
+      <path d="M8 10v6" />
+      <path d="M21 12v10H3V12" />
+      <path d="M12 2 3 7l9 5 9-5z" />
+      <path d="M12 12v10" />
+    </svg>
+  );
+}
