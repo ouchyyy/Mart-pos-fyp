@@ -1,14 +1,16 @@
 // ============================================================
-// Sales.jsx — past sales, one branch or the whole chain
+// Sales.jsx — every sale, and what actually sold
 //
-// Three sections, top to bottom:
+// Two sections:
 //
-//   KPI cards        the numbers an owner asks for
-//   Sales by product one row per product, rolled up
-//   All sales        every receipt, one row each
+//   Sales by product   aggregated totals per product
+//   Sales list         every individual sale, with receipts
 //
-// The filter bar applies to both tables, so what you see on
-// top and what you see below always cover the same period.
+// Both follow the same filter bar — date range, branch (owner
+// only) and search. Change the filter, both sections update.
+//
+// The owner sees every branch by default. An admin sees their
+// own. A cashier does not reach this page.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -27,7 +29,6 @@ import {
   ReceiptIcon,
   TrendIcon,
   SearchIcon2,
-  ProductsIcon,
   PackageIcon,
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
@@ -59,13 +60,15 @@ export default function Sales({ user, branchId, branches }) {
           : Number(pickedBranch)
         : branchId;
 
-      const [saleRows, productRows] = await Promise.all([
+      // Both queries run at once — two round trips in parallel
+      // instead of one after the other.
+      const [salesList, productList] = await Promise.all([
         getSales(filter, fromDate, toDate),
         getSalesByProduct(filter, fromDate, toDate),
       ]);
 
-      setSales(saleRows);
-      setByProduct(productRows);
+      setSales(salesList);
+      setByProduct(productList);
     } catch (err) {
       setError(err.message);
     }
@@ -91,28 +94,26 @@ export default function Sales({ user, branchId, branches }) {
     }
   }
 
-  // ---------- filters ----------
-  function matchesSearch(text, sale) {
-    if (text === '') return true;
-    const s = text.toLowerCase();
+  // ---------- filter by search ----------
+  const shownSales = sales.filter((sale) => {
+    if (search === '') return true;
+    const text = search.toLowerCase();
     const invoice = (sale.invoice_no || '').toLowerCase();
     const cashier = sale.profiles
       ? (sale.profiles.full_name || '').toLowerCase()
       : '';
     const branch = sale.branches ? sale.branches.name.toLowerCase() : '';
     return (
-      invoice.includes(s) || cashier.includes(s) || branch.includes(s)
+      invoice.includes(text) || cashier.includes(text) || branch.includes(text)
     );
-  }
-
-  const shownSales = sales.filter((sale) => matchesSearch(search, sale));
-
-  const shownProducts = byProduct.filter((p) => {
-    if (search === '') return true;
-    return p.name.toLowerCase().includes(search.toLowerCase());
   });
 
-  // ---------- summary ----------
+  const shownProducts = byProduct.filter((row) => {
+    if (search === '') return true;
+    return row.product_name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  // ---------- summary numbers ----------
   let total = 0;
   let discounts = 0;
   let completed = 0;
@@ -127,8 +128,15 @@ export default function Sales({ user, branchId, branches }) {
   const average = completed > 0 ? total / completed : 0;
   const cancelled = sales.length - completed;
 
-  const totalUnits = shownProducts.reduce((sum, p) => sum + p.quantity, 0);
-  const totalProductMoney = shownProducts.reduce((sum, p) => sum + p.money, 0);
+  // Product table totals — for its footer row.
+  const totalUnitsSold = byProduct.reduce(
+    (sum, row) => sum + row.quantity_sold,
+    0
+  );
+  const totalFundsReceived = byProduct.reduce(
+    (sum, row) => sum + row.funds_received,
+    0
+  );
 
   const hasFilter =
     fromDate !== '' ||
@@ -143,14 +151,14 @@ export default function Sales({ user, branchId, branches }) {
         title="Sales"
         subtitle={
           isOwner
-            ? 'Every sale at every branch, and the option to cancel a mistake.'
-            : 'Every sale at this branch.'
+            ? 'Every sale at every branch, and what actually sold.'
+            : 'Every sale at this branch, and what actually sold.'
         }
       />
 
       {error && <div className="error">{error}</div>}
 
-      {/* ---------- KPI cards ---------- */}
+      {/* ---------- four KPI cards ---------- */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -186,145 +194,113 @@ export default function Sales({ user, branchId, branches }) {
         />
       </div>
 
-      {/* ---------- filter bar (shared by both tables) ---------- */}
-      <div className="box" style={{ padding: '16px 22px', marginBottom: 22 }}>
+      {/* ---------- filter bar (shared by both sections) ---------- */}
+      <div
+        className="box"
+        style={{
+          padding: '16px 22px',
+          marginBottom: 22,
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+          alignItems: 'flex-end',
+        }}
+      >
         <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            flexWrap: 'wrap',
-            alignItems: 'flex-end',
-          }}
+          className="staff-search"
+          style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
         >
-          <div
-            className="staff-search"
-            style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
-          >
-            <SearchIcon2 />
-            <input
-              placeholder="Search product, invoice or staff"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <label style={{ margin: 0, minWidth: 140 }}>
-            <span>From</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-          </label>
-
-          <label style={{ margin: 0, minWidth: 140 }}>
-            <span>To</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-          </label>
-
-          {isOwner && branches && (
-            <label style={{ margin: 0, minWidth: 170 }}>
-              <span>Branch</span>
-              <select
-                value={pickedBranch}
-                onChange={(e) => setPickedBranch(e.target.value)}
-              >
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          {hasFilter && (
-            <button
-              onClick={() => {
-                setFromDate('');
-                setToDate('');
-                setPickedBranch('');
-                setSearch('');
-              }}
-            >
-              Clear
-            </button>
-          )}
+          <SearchIcon2 />
+          <input
+            placeholder="Search product, invoice or staff"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+
+        <label style={{ margin: 0, minWidth: 140 }}>
+          <span>From</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </label>
+
+        <label style={{ margin: 0, minWidth: 140 }}>
+          <span>To</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+          />
+        </label>
+
+        {isOwner && branches && (
+          <label style={{ margin: 0, minWidth: 170 }}>
+            <span>Branch</span>
+            <select
+              value={pickedBranch}
+              onChange={(e) => setPickedBranch(e.target.value)}
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {hasFilter && (
+          <button
+            onClick={() => {
+              setFromDate('');
+              setToDate('');
+              setPickedBranch('');
+              setSearch('');
+            }}
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* ============================================================
-          Sales by product — the rolled-up view
+          SALES BY PRODUCT
           ============================================================ */}
       <SectionCard
-        icon={<ProductsIcon />}
+        icon={<PackageIcon />}
         title="Sales by product"
         count={
-          shownProducts.length +
-          ' product' +
-          (shownProducts.length === 1 ? '' : 's') +
-          ' · ' +
-          totalUnits +
+          byProduct.length +
+          (byProduct.length === 1 ? ' product sold · ' : ' products sold · ') +
+          totalUnitsSold +
           ' units · ' +
-          money(totalProductMoney)
+          money(totalFundsReceived)
         }
-        actions={<span className="grey small-text">Biggest earner first</span>}
         padding={0}
       >
         <table>
           <thead>
             <tr>
               <th>Product</th>
+              <th className="right">Times sold</th>
               <th className="right">Unit price</th>
               <th className="right">Quantity sold</th>
-              <th className="right">Sales</th>
               <th className="right">Funds received</th>
             </tr>
           </thead>
           <tbody>
-            {shownProducts.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <div className="name-with-photo">
-                    <span
-                      className="section-card-icon"
-                      style={{ width: 30, height: 30 }}
-                    >
-                      <PackageIcon />
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>{p.name}</div>
-                      <div className="grey small-text">
-                        {p.sales} transaction{p.sales === 1 ? '' : 's'}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="right number">
-                  {money(p.currentPrice)}
-                  {p.currentPrice !== p.unitPrice && (
-                    <div
-                      className="grey small-text"
-                      style={{ fontSize: 11 }}
-                    >
-                      sold at {money(p.unitPrice)}
-                    </div>
-                  )}
-                </td>
+            {shownProducts.map((row) => (
+              <tr key={row.product_id}>
+                <td style={{ fontWeight: 500 }}>{row.product_name}</td>
+                <td className="right number">{row.sales_count}</td>
+                <td className="right number">{money(row.unit_cost)}</td>
+                <td className="right number">{row.quantity_sold}</td>
                 <td className="right number" style={{ fontWeight: 600 }}>
-                  {p.quantity}
-                </td>
-                <td className="right number grey">{p.sales}</td>
-                <td
-                  className="right number"
-                  style={{ fontWeight: 700, letterSpacing: '-0.01em' }}
-                >
-                  {money(p.money)}
+                  {money(row.funds_received)}
                 </td>
               </tr>
             ))}
@@ -335,17 +311,15 @@ export default function Sales({ user, branchId, branches }) {
                 <td>
                   <strong>Total</strong>
                 </td>
+                <td className="right number">
+                  <strong>{completed}</strong>
+                </td>
                 <td></td>
                 <td className="right number">
-                  <strong>{totalUnits}</strong>
+                  <strong>{totalUnitsSold}</strong>
                 </td>
                 <td className="right number">
-                  <strong>
-                    {shownProducts.reduce((s, p) => s + p.sales, 0)}
-                  </strong>
-                </td>
-                <td className="right number">
-                  <strong>{money(totalProductMoney)}</strong>
+                  <strong>{money(totalFundsReceived)}</strong>
                 </td>
               </tr>
             </tfoot>
@@ -353,20 +327,20 @@ export default function Sales({ user, branchId, branches }) {
         </table>
 
         {!loading && shownProducts.length === 0 && (
-          <div className="empty small-text">
-            {search
-              ? 'No products match the search.'
-              : 'Nothing sold in this period.'}
+          <div className="empty">
+            {byProduct.length === 0
+              ? 'Nothing sold in this period.'
+              : 'No products match the filter.'}
           </div>
         )}
       </SectionCard>
 
       {/* ============================================================
-          All sales — the receipt-level view
+          SALES LIST
           ============================================================ */}
       <SectionCard
         icon={<SalesIcon />}
-        title="All sales"
+        title="Sales list"
         count={shownSales.length + ' of ' + sales.length + ' sales'}
         padding={0}
       >
