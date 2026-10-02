@@ -1,12 +1,11 @@
 // ============================================================
-// Ui.jsx — the shared layout pieces
+// Ui.jsx — the three pieces every redesigned page shares.
 //
 //   PageHeader    breadcrumb + title + subtitle + actions
 //   SectionCard   a box with a titled, icon'd header
-//   StatCard      a KPI card with a coloured gradient icon
+//   StatCard      a KPI card with an icon in a coloured square
 //
-// No state, no data, no side effects. The pages pass everything
-// in and these just render it.
+// Kept deliberately plain: no state, no data, no side effects.
 // ============================================================
 
 export function PageHeader({ breadcrumb, title, subtitle, actions }) {
@@ -17,7 +16,6 @@ export function PageHeader({ breadcrumb, title, subtitle, actions }) {
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
-
       {actions && <div className="page-header-actions">{actions}</div>}
     </div>
   );
@@ -26,7 +24,6 @@ export function PageHeader({ breadcrumb, title, subtitle, actions }) {
 export function SectionCard({
   icon,
   title,
-  description,
   count,
   actions,
   padding,
@@ -44,25 +41,13 @@ export function SectionCard({
             )}
           </div>
         </div>
-
         {actions && <div className="section-card-actions">{actions}</div>}
       </div>
 
-      {description && (
-        <div
-          style={{
-            padding: '14px 22px 0',
-            fontSize: 13,
-            color: 'var(--muted)',
-          }}
-        >
-          {description}
-        </div>
-      )}
-
       <div
-        className="section-card-body"
-        style={padding === 0 ? { padding: 0 } : undefined}
+        className={
+          'section-card-body' + (padding === 0 ? ' no-pad' : '')
+        }
       >
         {children}
       </div>
@@ -77,9 +62,7 @@ export function StatCard({ icon, tone, label, value, note, noteTone }) {
         <div className={'stat-icon tone-' + (tone || 'blue')}>{icon}</div>
         <div className="stat-label">{label}</div>
       </div>
-
       <div className="stat-value number">{value}</div>
-
       {note && (
         <div className={'stat-note tone-' + (noteTone || 'grey')}>
           {note}
