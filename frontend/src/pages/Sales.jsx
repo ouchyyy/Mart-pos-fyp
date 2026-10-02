@@ -3,7 +3,7 @@
 //
 // Two sections:
 //
-//   Sales by product   product, unit price, quantity, funds
+//   Sales by product   unit price, discount per unit, units, funds
 //   Invoice            every individual sale, with receipts
 //
 // Both follow the same filter bar — date range, branch (owner
@@ -11,11 +11,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import {
-  getSales,
-  getSale,
-  getSalesByProduct,
-} from '../database';
+import { getSales, getSale, getSalesByProduct } from '../database';
 import { money, dateAndTime } from '../money';
 
 import { PageHeader, StatCard, SectionCard } from '../components/Ui';
@@ -262,6 +258,7 @@ export default function Sales({ user, branchId, branches }) {
               <th style={{ width: 44 }}></th>
               <th>Product</th>
               <th className="right">Unit price</th>
+              <th className="right">Discount / unit</th>
               <th className="right">Quantity sold</th>
               <th className="right">Funds received</th>
             </tr>
@@ -276,6 +273,20 @@ export default function Sales({ user, branchId, branches }) {
                 </td>
                 <td className="sales-product-name">{row.product_name}</td>
                 <td className="right number">{money(row.unit_cost)}</td>
+                <td
+                  className="right number"
+                  style={{
+                    color:
+                      row.discount_per_unit > 0
+                        ? 'var(--red)'
+                        : 'var(--muted)',
+                    fontWeight: row.discount_per_unit > 0 ? 600 : 400,
+                  }}
+                >
+                  {row.discount_per_unit > 0
+                    ? '-' + money(row.discount_per_unit)
+                    : money(0)}
+                </td>
                 <td className="right number">{row.quantity_sold}</td>
                 <td className="right number total-cell">
                   {money(row.funds_received)}
