@@ -171,7 +171,6 @@ export default function App() {
 
         {/* ---------- Main ---------- */}
         <div className="menu-section">
-          <div className="menu-section-label">Main</div>
 
           {isOwner && (
             <MenuButton
@@ -205,8 +204,7 @@ export default function App() {
         {/* ---------- Manage ---------- */}
         {isAdmin && (
           <div className="menu-section">
-            <div className="menu-section-label">Manage</div>
-
+      
             <MenuButton
               name="stock"
               label="Stock"
@@ -259,7 +257,6 @@ export default function App() {
         {/* ---------- Setting ---------- */}
         {isAdmin && (
           <div className="menu-section">
-            <div className="menu-section-label">Setting</div>
 
             <MenuGroup
               name="setting"
