@@ -223,7 +223,7 @@ export default function App() {
 
             <MenuGroup
               name="movements"
-              label="Movements"
+              label="Tracking"
               Icon={MovementsIcon}
               open={openGroups.movements}
               onToggle={() => toggleGroup('movements')}
