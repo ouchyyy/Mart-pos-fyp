@@ -469,7 +469,6 @@ function AddStaffPopup({ user, branches, defaultBranchId, onClose, onSaved }) {
           <input
             value={form.username}
             onChange={(e) => update('username', e.target.value)}
-            placeholder="vina_ss"
             autoFocus
             autoCapitalize="none"
             autoCorrect="off"
@@ -482,7 +481,6 @@ function AddStaffPopup({ user, branches, defaultBranchId, onClose, onSaved }) {
           <input
             value={form.fullName}
             onChange={(e) => update('fullName', e.target.value)}
-            placeholder="Vina Sok"
           />
         </label>
 
@@ -493,7 +491,6 @@ function AddStaffPopup({ user, branches, defaultBranchId, onClose, onSaved }) {
               type="text"
               value={form.password}
               onChange={(e) => update('password', e.target.value)}
-              placeholder="At least 6 characters"
             />
             <button
               type="button"
