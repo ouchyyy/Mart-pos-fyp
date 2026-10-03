@@ -36,6 +36,30 @@ function makeEmail(username) {
 }
 
 // ------------------------------------------------------------
+// Date helpers — turn "YYYY-MM-DD" into the right UTC instants
+//
+// The date input gives a plain day like "2026-09-29". If we
+// hand that straight to Postgres, it reads it as midnight UTC —
+// which is 7am in Cambodia. So a sale rung up at 6am is missed.
+//
+// These two helpers build the boundary from local midnight to
+// local 23:59:59.999, then convert to ISO. Postgres then sees
+// the exact moment the day starts and ends where you are.
+// ------------------------------------------------------------
+
+function dayStart(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toISOString();
+}
+
+function dayEnd(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T23:59:59.999');
+  return d.toISOString();
+}
+
+// ------------------------------------------------------------
 // Signing in and out
 // ------------------------------------------------------------
 
@@ -311,8 +335,8 @@ export async function getSales(branchId, fromDate, toDate) {
     .limit(300);
 
   if (branchId) query = query.eq('branch_id', branchId);
-  if (fromDate) query = query.gte('created_at', fromDate);
-  if (toDate)   query = query.lte('created_at', toDate + 'T23:59:59');
+  if (fromDate) query = query.gte('created_at', dayStart(fromDate));
+  if (toDate)   query = query.lte('created_at', dayEnd(toDate));
 
   return check(await query);
 }
@@ -342,8 +366,8 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
     .eq('sales.status', 'completed');
 
   if (branchId) q = q.eq('sales.branch_id', branchId);
-  if (fromDate) q = q.gte('sales.created_at', fromDate);
-  if (toDate)   q = q.lte('sales.created_at', toDate + 'T23:59:59');
+  if (fromDate) q = q.gte('sales.created_at', dayStart(fromDate));
+  if (toDate)   q = q.lte('sales.created_at', dayEnd(toDate));
 
   const rows = check(await q);
 
@@ -377,15 +401,12 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
     quantity_sold: t.quantity_sold,
     funds_received: t.funds_received,
     total_discount: t.total_discount,
-    // The average discount taken on each unit of this product.
     discount_per_unit:
       t.quantity_sold > 0 ? t.total_discount / t.quantity_sold : 0,
     sales_count: t.sale_ids.size,
   }));
 
-  // Best-earning product first.
   list.sort((a, b) => b.funds_received - a.funds_received);
-
   return list;
 }
 
