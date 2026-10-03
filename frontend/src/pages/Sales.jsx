@@ -1,10 +1,15 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// One date picker, defaulting to today. The KPI cards are kept
-// deliberately plain — icon, label, value — with no notes
-// underneath. The date and counts live on the two table headers
-// where they belong.
+// KPI cards:
+//
+//   Total Sales   the number of completed sales
+//   Revenue       money in, with the average sale underneath
+//   Items Sold    units moved — the "how busy was it" number
+//   Discounts     money given away
+//
+// One date picker, defaulting to today. Every filter narrows
+// both the product summary and the invoice list.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -15,7 +20,6 @@ import { PageHeader, StatCard, SectionCard } from '../components/Ui';
 import {
   SalesIcon,
   WalletIcon,
-  ReceiptIcon,
   TrendIcon,
   SearchIcon2,
   PackageIcon,
@@ -99,19 +103,25 @@ export default function Sales({ user, branchId, branches }) {
     return row.product_name.toLowerCase().includes(search.toLowerCase());
   });
 
-  let total = 0;
+  // ---------- KPI numbers ----------
+  let revenue = 0;
   let discounts = 0;
   let completed = 0;
   for (const sale of sales) {
     if (sale.status === 'completed') {
-      total += Number(sale.total);
+      revenue += Number(sale.total);
       discounts +=
         Number(sale.discount || 0) + Number(sale.item_discount || 0);
       completed += 1;
     }
   }
-  const average = completed > 0 ? total / completed : 0;
-  const cancelled = sales.length - completed;
+  const averageSale = completed > 0 ? revenue / completed : 0;
+
+  // Total units moved — this is the "how busy" number.
+  const unitsSold = byProduct.reduce(
+    (sum, row) => sum + row.quantity_sold,
+    0
+  );
 
   const hasFilter = pickedBranch !== '' || search !== '';
 
@@ -141,31 +151,39 @@ export default function Sales({ user, branchId, branches }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* ---------- KPI cards ---------- */}
+      {/* ============================================================
+          KPI CARDS
+          ============================================================ */}
       <div className="stat-grid">
         <StatCard
-          icon={<WalletIcon />}
+          icon={<SalesIcon />}
           tone="blue"
-          label="Total takings"
-          value={money(total)}
+          label="Total Sales"
+          value={completed}
         />
         <StatCard
-          icon={<ReceiptIcon />}
+          icon={<WalletIcon />}
           tone="violet"
-          label="Average sale"
-          value={money(average)}
+          label="Revenue"
+          value={money(revenue)}
+          note={'Avg ' + money(averageSale) + ' per sale'}
+          noteTone="grey"
+        />
+        <StatCard
+          icon={<PackageIcon />}
+          tone="teal"
+          label="Items Sold"
+          value={unitsSold}
+          note={'Across ' + byProduct.length + ' product' + (byProduct.length === 1 ? '' : 's')}
+          noteTone="grey"
         />
         <StatCard
           icon={<TrendIcon />}
           tone="amber"
-          label="Discounts given"
+          label="Discounts"
           value={money(discounts)}
-        />
-        <StatCard
-          icon={<SalesIcon />}
-          tone="red"
-          label="Cancelled"
-          value={cancelled}
+          note={discounts > 0 ? 'Money given away' : 'None given'}
+          noteTone={discounts > 0 ? 'amber' : 'green'}
         />
       </div>
 
