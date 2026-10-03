@@ -1,17 +1,15 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// Filtering:
+// One date picker. Pick a day, see that day. Leave it empty
+// to see every sale ever recorded.
 //
-//   Quick chips   Today · Yesterday · Last 7 days · Last 30 days
-//                 · All time
-//   From / To     for a custom range, or just one day by setting
-//                 both to the same date
-//   Branch        owner only — all branches or one
-//   Search        product, invoice number, staff name or branch
+// There is still a Branch filter (owner only) and a search box
+// on top of that, if you need to narrow further.
 //
-// Every filter narrows BOTH tables at once: the product summary
-// and the invoice list.
+// The date is treated as the whole local day: from 00:00:00 to
+// 23:59:59.999 in Cambodia, not UTC. That means a sale rung up
+// at 6am on the chosen day is included, not missed.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -26,14 +24,14 @@ import {
   TrendIcon,
   SearchIcon2,
   PackageIcon,
+  CalendarIcon,
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
 
 // Today as a "YYYY-MM-DD" string, in the browser's local time.
 // `toISOString()` would give UTC and could land us on yesterday.
-function todayString(offsetDays = 0) {
+function todayString() {
   const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -43,8 +41,7 @@ function todayString(offsetDays = 0) {
 export default function Sales({ user, branchId, branches }) {
   const [sales, setSales] = useState([]);
   const [byProduct, setByProduct] = useState([]);
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [pickedDate, setPickedDate] = useState('');
   const [pickedBranch, setPickedBranch] = useState('');
   const [search, setSearch] = useState('');
   const [looking, setLooking] = useState(null);
@@ -56,7 +53,7 @@ export default function Sales({ user, branchId, branches }) {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromDate, toDate, branchId, pickedBranch]);
+  }, [pickedDate, branchId, pickedBranch]);
 
   async function load() {
     setLoading(true);
@@ -67,9 +64,11 @@ export default function Sales({ user, branchId, branches }) {
           : Number(pickedBranch)
         : branchId;
 
+      // The same date goes in as both From and To — that is how
+      // the range covers exactly one day.
       const [salesList, productList] = await Promise.all([
-        getSales(filter, fromDate, toDate),
-        getSalesByProduct(filter, fromDate, toDate),
+        getSales(filter, pickedDate, pickedDate),
+        getSalesByProduct(filter, pickedDate, pickedDate),
       ]);
 
       setSales(salesList);
@@ -80,50 +79,13 @@ export default function Sales({ user, branchId, branches }) {
     setLoading(false);
   }
 
-  // ---------- quick date presets ----------
   function pickToday() {
-    const t = todayString(0);
-    setFromDate(t);
-    setToDate(t);
+    setPickedDate(todayString());
   }
 
-  function pickYesterday() {
-    const y = todayString(-1);
-    setFromDate(y);
-    setToDate(y);
+  function clearDate() {
+    setPickedDate('');
   }
-
-  function pickLastWeek() {
-    setFromDate(todayString(-6));
-    setToDate(todayString(0));
-  }
-
-  function pickLastMonth() {
-    setFromDate(todayString(-29));
-    setToDate(todayString(0));
-  }
-
-  function pickAllTime() {
-    setFromDate('');
-    setToDate('');
-  }
-
-  // Which preset is currently active? Drives the `.on` class on
-  // the chips so you can see at a glance what range is on.
-  function activePreset() {
-    if (fromDate === '' && toDate === '') return 'all';
-    if (fromDate === todayString(0) && toDate === todayString(0))
-      return 'today';
-    if (fromDate === todayString(-1) && toDate === todayString(-1))
-      return 'yesterday';
-    if (fromDate === todayString(-6) && toDate === todayString(0))
-      return 'week';
-    if (fromDate === todayString(-29) && toDate === todayString(0))
-      return 'month';
-    return '';
-  }
-
-  const preset = activePreset();
 
   async function showReceipt(id) {
     try {
@@ -167,10 +129,7 @@ export default function Sales({ user, branchId, branches }) {
   const cancelled = sales.length - completed;
 
   const hasFilter =
-    fromDate !== '' ||
-    toDate !== '' ||
-    pickedBranch !== '' ||
-    search !== '';
+    pickedDate !== '' || pickedBranch !== '' || search !== '';
 
   function rankTone(index) {
     if (index === 0) return 'gold';
@@ -180,26 +139,14 @@ export default function Sales({ user, branchId, branches }) {
   }
 
   // A short, readable label for what range is on screen.
-  const rangeLabel =
-    preset === 'today'
-      ? 'Today'
-      : preset === 'yesterday'
-      ? 'Yesterday'
-      : preset === 'week'
-      ? 'Last 7 days'
-      : preset === 'month'
-      ? 'Last 30 days'
-      : preset === 'all'
-      ? 'All time'
-      : fromDate === toDate && fromDate !== ''
-      ? fromDate
-      : fromDate && toDate
-      ? fromDate + ' → ' + toDate
-      : fromDate
-      ? 'From ' + fromDate
-      : toDate
-      ? 'To ' + toDate
-      : 'All time';
+  const rangeLabel = pickedDate
+    ? new Date(pickedDate + 'T00:00:00').toLocaleDateString(undefined, {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : 'All time';
 
   return (
     <div>
@@ -252,110 +199,76 @@ export default function Sales({ user, branchId, branches }) {
       </div>
 
       {/* ---------- filter bar ---------- */}
-      <div className="box" style={{ padding: '16px 22px', marginBottom: 22 }}>
-        {/* Quick date chips */}
-        <div className="filter-chips" style={{ marginBottom: 14 }}>
-          <button
-            className={'chip' + (preset === 'today' ? ' on' : '')}
-            onClick={pickToday}
-          >
-            Today
-          </button>
-          <button
-            className={'chip' + (preset === 'yesterday' ? ' on' : '')}
-            onClick={pickYesterday}
-          >
-            Yesterday
-          </button>
-          <button
-            className={'chip' + (preset === 'week' ? ' on' : '')}
-            onClick={pickLastWeek}
-          >
-            Last 7 days
-          </button>
-          <button
-            className={'chip' + (preset === 'month' ? ' on' : '')}
-            onClick={pickLastMonth}
-          >
-            Last 30 days
-          </button>
-          <button
-            className={'chip' + (preset === 'all' ? ' on' : '')}
-            onClick={pickAllTime}
-          >
-            All time
-          </button>
-        </div>
-
-        {/* Search + custom range + branch */}
+      <div
+        className="box"
+        style={{
+          padding: '16px 22px',
+          marginBottom: 22,
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+          alignItems: 'flex-end',
+        }}
+      >
         <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            flexWrap: 'wrap',
-            alignItems: 'flex-end',
-          }}
+          className="staff-search"
+          style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
         >
-          <div
-            className="staff-search"
-            style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
-          >
-            <SearchIcon2 />
-            <input
-              placeholder="Search product, invoice or staff"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <label style={{ margin: 0, minWidth: 140 }}>
-            <span>From</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-          </label>
-
-          <label style={{ margin: 0, minWidth: 140 }}>
-            <span>To</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
-          </label>
-
-          {isOwner && branches && (
-            <label style={{ margin: 0, minWidth: 170 }}>
-              <span>Branch</span>
-              <select
-                value={pickedBranch}
-                onChange={(e) => setPickedBranch(e.target.value)}
-              >
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          {hasFilter && (
-            <button
-              onClick={() => {
-                setFromDate('');
-                setToDate('');
-                setPickedBranch('');
-                setSearch('');
-              }}
-            >
-              Clear
-            </button>
-          )}
+          <SearchIcon2 />
+          <input
+            placeholder="Search product, invoice or staff"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+
+        <label style={{ margin: 0, minWidth: 180 }}>
+          <span>Date</span>
+          <input
+            type="date"
+            value={pickedDate}
+            onChange={(e) => setPickedDate(e.target.value)}
+          />
+        </label>
+
+        <button onClick={pickToday} style={{ whiteSpace: 'nowrap' }}>
+          Today
+        </button>
+
+        {pickedDate && (
+          <button onClick={clearDate} style={{ whiteSpace: 'nowrap' }}>
+            Show all dates
+          </button>
+        )}
+
+        {isOwner && branches && (
+          <label style={{ margin: 0, minWidth: 170 }}>
+            <span>Branch</span>
+            <select
+              value={pickedBranch}
+              onChange={(e) => setPickedBranch(e.target.value)}
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {hasFilter && (
+          <button
+            onClick={() => {
+              setPickedDate('');
+              setPickedBranch('');
+              setSearch('');
+            }}
+          >
+            Clear all
+          </button>
+        )}
       </div>
 
       {/* ============================================================
@@ -414,7 +327,9 @@ export default function Sales({ user, branchId, branches }) {
         {!loading && shownProducts.length === 0 && (
           <div className="empty">
             {byProduct.length === 0
-              ? 'Nothing sold in this period.'
+              ? pickedDate
+                ? 'Nothing sold on this day.'
+                : 'Nothing sold yet.'
               : 'No products match the filter.'}
           </div>
         )}
@@ -511,7 +426,9 @@ export default function Sales({ user, branchId, branches }) {
         {!loading && shownSales.length === 0 && (
           <div className="empty">
             {sales.length === 0
-              ? 'No sales in this period.'
+              ? pickedDate
+                ? 'No sales on this day.'
+                : 'No sales yet.'
               : 'No sales match the filter.'}
           </div>
         )}
