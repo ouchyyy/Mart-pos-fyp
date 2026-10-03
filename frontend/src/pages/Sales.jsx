@@ -1,15 +1,11 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// One date picker. Pick a day, see that day. Leave it empty
-// to see every sale ever recorded.
-//
-// There is still a Branch filter (owner only) and a search box
-// on top of that, if you need to narrow further.
+// One date picker, defaulting to today. Pick another day, see
+// that day. The Today button snaps you back.
 //
 // The date is treated as the whole local day: from 00:00:00 to
-// 23:59:59.999 in Cambodia, not UTC. That means a sale rung up
-// at 6am on the chosen day is included, not missed.
+// 23:59:59.999 in Cambodia, not UTC.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -24,7 +20,6 @@ import {
   TrendIcon,
   SearchIcon2,
   PackageIcon,
-  CalendarIcon,
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
 
@@ -41,7 +36,10 @@ function todayString() {
 export default function Sales({ user, branchId, branches }) {
   const [sales, setSales] = useState([]);
   const [byProduct, setByProduct] = useState([]);
-  const [pickedDate, setPickedDate] = useState('');
+  // Default: today. Every time the page opens, it shows today's
+  // sales. The date picker is still there for looking at another
+  // day, and the Today button snaps it back.
+  const [pickedDate, setPickedDate] = useState(todayString());
   const [pickedBranch, setPickedBranch] = useState('');
   const [search, setSearch] = useState('');
   const [looking, setLooking] = useState(null);
@@ -81,10 +79,6 @@ export default function Sales({ user, branchId, branches }) {
 
   function pickToday() {
     setPickedDate(todayString());
-  }
-
-  function clearDate() {
-    setPickedDate('');
   }
 
   async function showReceipt(id) {
@@ -128,8 +122,7 @@ export default function Sales({ user, branchId, branches }) {
   const average = completed > 0 ? total / completed : 0;
   const cancelled = sales.length - completed;
 
-  const hasFilter =
-    pickedDate !== '' || pickedBranch !== '' || search !== '';
+  const hasFilter = pickedBranch !== '' || search !== '';
 
   function rankTone(index) {
     if (index === 0) return 'gold';
@@ -138,15 +131,11 @@ export default function Sales({ user, branchId, branches }) {
     return 'plain';
   }
 
-  // A short, readable label for what range is on screen.
-  const rangeLabel = pickedDate
-    ? new Date(pickedDate + 'T00:00:00').toLocaleDateString(undefined, {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : 'All time';
+  // A short, readable label for what day is on screen.
+  const rangeLabel = new Date(pickedDate + 'T00:00:00').toLocaleDateString(
+    undefined,
+    { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }
+  );
 
   return (
     <div>
@@ -235,12 +224,6 @@ export default function Sales({ user, branchId, branches }) {
           Today
         </button>
 
-        {pickedDate && (
-          <button onClick={clearDate} style={{ whiteSpace: 'nowrap' }}>
-            Show all dates
-          </button>
-        )}
-
         {isOwner && branches && (
           <label style={{ margin: 0, minWidth: 170 }}>
             <span>Branch</span>
@@ -261,12 +244,11 @@ export default function Sales({ user, branchId, branches }) {
         {hasFilter && (
           <button
             onClick={() => {
-              setPickedDate('');
               setPickedBranch('');
               setSearch('');
             }}
           >
-            Clear all
+            Clear
           </button>
         )}
       </div>
@@ -327,9 +309,7 @@ export default function Sales({ user, branchId, branches }) {
         {!loading && shownProducts.length === 0 && (
           <div className="empty">
             {byProduct.length === 0
-              ? pickedDate
-                ? 'Nothing sold on this day.'
-                : 'Nothing sold yet.'
+              ? 'Nothing sold on this day.'
               : 'No products match the filter.'}
           </div>
         )}
@@ -426,9 +406,7 @@ export default function Sales({ user, branchId, branches }) {
         {!loading && shownSales.length === 0 && (
           <div className="empty">
             {sales.length === 0
-              ? pickedDate
-                ? 'No sales on this day.'
-                : 'No sales yet.'
+              ? 'No sales on this day.'
               : 'No sales match the filter.'}
           </div>
         )}
