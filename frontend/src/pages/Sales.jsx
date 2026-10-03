@@ -1,11 +1,9 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// One date picker, defaulting to today. Pick another day, see
-// that day. The Today button snaps you back.
-//
-// The date is treated as the whole local day: from 00:00:00 to
-// 23:59:59.999 in Cambodia, not UTC.
+// One date picker, defaulting to today. The date is shown on
+// the two table headers, but not on the KPI cards — the cards
+// say what they count, not which day.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -23,8 +21,6 @@ import {
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
 
-// Today as a "YYYY-MM-DD" string, in the browser's local time.
-// `toISOString()` would give UTC and could land us on yesterday.
 function todayString() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -36,9 +32,6 @@ function todayString() {
 export default function Sales({ user, branchId, branches }) {
   const [sales, setSales] = useState([]);
   const [byProduct, setByProduct] = useState([]);
-  // Default: today. Every time the page opens, it shows today's
-  // sales. The date picker is still there for looking at another
-  // day, and the Today button snaps it back.
   const [pickedDate, setPickedDate] = useState(todayString());
   const [pickedBranch, setPickedBranch] = useState('');
   const [search, setSearch] = useState('');
@@ -62,8 +55,6 @@ export default function Sales({ user, branchId, branches }) {
           : Number(pickedBranch)
         : branchId;
 
-      // The same date goes in as both From and To — that is how
-      // the range covers exactly one day.
       const [salesList, productList] = await Promise.all([
         getSales(filter, pickedDate, pickedDate),
         getSalesByProduct(filter, pickedDate, pickedDate),
@@ -107,7 +98,6 @@ export default function Sales({ user, branchId, branches }) {
     return row.product_name.toLowerCase().includes(search.toLowerCase());
   });
 
-  // ---------- summary ----------
   let total = 0;
   let discounts = 0;
   let completed = 0;
@@ -131,7 +121,7 @@ export default function Sales({ user, branchId, branches }) {
     return 'plain';
   }
 
-  // A short, readable label for what day is on screen.
+  // The date label, shown under each table title.
   const rangeLabel = new Date(pickedDate + 'T00:00:00').toLocaleDateString(
     undefined,
     { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }
@@ -158,7 +148,7 @@ export default function Sales({ user, branchId, branches }) {
           tone="blue"
           label="Total takings"
           value={money(total)}
-          note={completed + ' completed · ' + rangeLabel}
+          note={completed + ' completed sales'}
           noteTone="grey"
         />
         <StatCard
@@ -166,7 +156,7 @@ export default function Sales({ user, branchId, branches }) {
           tone="violet"
           label="Average sale"
           value={money(average)}
-          note={rangeLabel}
+          note="Across this day"
           noteTone="grey"
         />
         <StatCard
