@@ -104,12 +104,8 @@ export default function Sales({ user, branchId, branches }) {
   });
 
   // ---------- KPI numbers ----------
-  //
-  // `subtotal` is what the sale would have come to at full price,
-  // before any line or sale discount. `total` is what the customer
-  // actually paid.
-  let gross = 0;      // sum of subtotals
-  let revenue = 0;    // sum of totals (what was actually paid)
+  let gross = 0;
+  let revenue = 0;
   let discounts = 0;
   let completed = 0;
 
@@ -129,13 +125,6 @@ export default function Sales({ user, branchId, branches }) {
   );
 
   const hasFilter = pickedBranch !== '' || search !== '';
-
-  function rankTone(index) {
-    if (index === 0) return 'gold';
-    if (index === 1) return 'silver';
-    if (index === 2) return 'bronze';
-    return 'plain';
-  }
 
   const rangeLabel = new Date(pickedDate + 'T00:00:00').toLocaleDateString(
     undefined,
@@ -264,7 +253,6 @@ export default function Sales({ user, branchId, branches }) {
         <table className="sales-table">
           <thead>
             <tr>
-              <th style={{ width: 44 }}></th>
               <th>Product</th>
               <th className="right">Unit price</th>
               <th className="right">Discount / unit</th>
@@ -273,13 +261,8 @@ export default function Sales({ user, branchId, branches }) {
             </tr>
           </thead>
           <tbody>
-            {shownProducts.map((row, index) => (
+            {shownProducts.map((row) => (
               <tr key={row.product_id}>
-                <td>
-                  <span className={'rank-badge ' + rankTone(index)}>
-                    {index + 1}
-                  </span>
-                </td>
                 <td className="sales-product-name">{row.product_name}</td>
                 <td className="right number">{money(row.unit_cost)}</td>
                 <td
