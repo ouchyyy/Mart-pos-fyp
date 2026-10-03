@@ -1,13 +1,17 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// Two sections:
+// Filtering:
 //
-//   Sales by product   unit price, discount per unit, units, funds
-//   Invoice            every individual sale, with receipts
+//   Quick chips   Today · Yesterday · Last 7 days · Last 30 days
+//                 · All time
+//   From / To     for a custom range, or just one day by setting
+//                 both to the same date
+//   Branch        owner only — all branches or one
+//   Search        product, invoice number, staff name or branch
 //
-// Both follow the same filter bar — date range, branch (owner
-// only) and search. Change the filter, both sections update.
+// Every filter narrows BOTH tables at once: the product summary
+// and the invoice list.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -24,6 +28,17 @@ import {
   PackageIcon,
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
+
+// Today as a "YYYY-MM-DD" string, in the browser's local time.
+// `toISOString()` would give UTC and could land us on yesterday.
+function todayString(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
 
 export default function Sales({ user, branchId, branches }) {
   const [sales, setSales] = useState([]);
@@ -64,6 +79,51 @@ export default function Sales({ user, branchId, branches }) {
     }
     setLoading(false);
   }
+
+  // ---------- quick date presets ----------
+  function pickToday() {
+    const t = todayString(0);
+    setFromDate(t);
+    setToDate(t);
+  }
+
+  function pickYesterday() {
+    const y = todayString(-1);
+    setFromDate(y);
+    setToDate(y);
+  }
+
+  function pickLastWeek() {
+    setFromDate(todayString(-6));
+    setToDate(todayString(0));
+  }
+
+  function pickLastMonth() {
+    setFromDate(todayString(-29));
+    setToDate(todayString(0));
+  }
+
+  function pickAllTime() {
+    setFromDate('');
+    setToDate('');
+  }
+
+  // Which preset is currently active? Drives the `.on` class on
+  // the chips so you can see at a glance what range is on.
+  function activePreset() {
+    if (fromDate === '' && toDate === '') return 'all';
+    if (fromDate === todayString(0) && toDate === todayString(0))
+      return 'today';
+    if (fromDate === todayString(-1) && toDate === todayString(-1))
+      return 'yesterday';
+    if (fromDate === todayString(-6) && toDate === todayString(0))
+      return 'week';
+    if (fromDate === todayString(-29) && toDate === todayString(0))
+      return 'month';
+    return '';
+  }
+
+  const preset = activePreset();
 
   async function showReceipt(id) {
     try {
@@ -119,6 +179,28 @@ export default function Sales({ user, branchId, branches }) {
     return 'plain';
   }
 
+  // A short, readable label for what range is on screen.
+  const rangeLabel =
+    preset === 'today'
+      ? 'Today'
+      : preset === 'yesterday'
+      ? 'Yesterday'
+      : preset === 'week'
+      ? 'Last 7 days'
+      : preset === 'month'
+      ? 'Last 30 days'
+      : preset === 'all'
+      ? 'All time'
+      : fromDate === toDate && fromDate !== ''
+      ? fromDate
+      : fromDate && toDate
+      ? fromDate + ' → ' + toDate
+      : fromDate
+      ? 'From ' + fromDate
+      : toDate
+      ? 'To ' + toDate
+      : 'All time';
+
   return (
     <div>
       <PageHeader
@@ -140,7 +222,7 @@ export default function Sales({ user, branchId, branches }) {
           tone="blue"
           label="Total takings"
           value={money(total)}
-          note={completed + ' completed sales'}
+          note={completed + ' completed · ' + rangeLabel}
           noteTone="grey"
         />
         <StatCard
@@ -148,9 +230,7 @@ export default function Sales({ user, branchId, branches }) {
           tone="violet"
           label="Average sale"
           value={money(average)}
-          note={
-            fromDate || toDate ? 'In the chosen period' : 'Across all sales'
-          }
+          note={rangeLabel}
           noteTone="grey"
         />
         <StatCard
@@ -172,76 +252,110 @@ export default function Sales({ user, branchId, branches }) {
       </div>
 
       {/* ---------- filter bar ---------- */}
-      <div
-        className="box"
-        style={{
-          padding: '16px 22px',
-          marginBottom: 22,
-          display: 'flex',
-          gap: 12,
-          flexWrap: 'wrap',
-          alignItems: 'flex-end',
-        }}
-      >
-        <div
-          className="staff-search"
-          style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
-        >
-          <SearchIcon2 />
-          <input
-            placeholder="Search product, invoice or staff"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="box" style={{ padding: '16px 22px', marginBottom: 22 }}>
+        {/* Quick date chips */}
+        <div className="filter-chips" style={{ marginBottom: 14 }}>
+          <button
+            className={'chip' + (preset === 'today' ? ' on' : '')}
+            onClick={pickToday}
+          >
+            Today
+          </button>
+          <button
+            className={'chip' + (preset === 'yesterday' ? ' on' : '')}
+            onClick={pickYesterday}
+          >
+            Yesterday
+          </button>
+          <button
+            className={'chip' + (preset === 'week' ? ' on' : '')}
+            onClick={pickLastWeek}
+          >
+            Last 7 days
+          </button>
+          <button
+            className={'chip' + (preset === 'month' ? ' on' : '')}
+            onClick={pickLastMonth}
+          >
+            Last 30 days
+          </button>
+          <button
+            className={'chip' + (preset === 'all' ? ' on' : '')}
+            onClick={pickAllTime}
+          >
+            All time
+          </button>
         </div>
 
-        <label style={{ margin: 0, minWidth: 140 }}>
-          <span>From</span>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-          />
-        </label>
-
-        <label style={{ margin: 0, minWidth: 140 }}>
-          <span>To</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-          />
-        </label>
-
-        {isOwner && branches && (
-          <label style={{ margin: 0, minWidth: 170 }}>
-            <span>Branch</span>
-            <select
-              value={pickedBranch}
-              onChange={(e) => setPickedBranch(e.target.value)}
-            >
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {hasFilter && (
-          <button
-            onClick={() => {
-              setFromDate('');
-              setToDate('');
-              setPickedBranch('');
-              setSearch('');
-            }}
+        {/* Search + custom range + branch */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'wrap',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div
+            className="staff-search"
+            style={{ flex: 1, minWidth: 220, maxWidth: 320 }}
           >
-            Clear
-          </button>
-        )}
+            <SearchIcon2 />
+            <input
+              placeholder="Search product, invoice or staff"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <label style={{ margin: 0, minWidth: 140 }}>
+            <span>From</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </label>
+
+          <label style={{ margin: 0, minWidth: 140 }}>
+            <span>To</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </label>
+
+          {isOwner && branches && (
+            <label style={{ margin: 0, minWidth: 170 }}>
+              <span>Branch</span>
+              <select
+                value={pickedBranch}
+                onChange={(e) => setPickedBranch(e.target.value)}
+              >
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {hasFilter && (
+            <button
+              onClick={() => {
+                setFromDate('');
+                setToDate('');
+                setPickedBranch('');
+                setSearch('');
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ============================================================
@@ -250,6 +364,7 @@ export default function Sales({ user, branchId, branches }) {
       <SectionCard
         icon={<PackageIcon />}
         title="Sales by product"
+        count={rangeLabel}
         padding={0}
       >
         <table className="sales-table">
@@ -308,7 +423,18 @@ export default function Sales({ user, branchId, branches }) {
       {/* ============================================================
           INVOICE LIST
           ============================================================ */}
-      <SectionCard icon={<SalesIcon />} title="Invoice" padding={0}>
+      <SectionCard
+        icon={<SalesIcon />}
+        title="Invoice"
+        count={
+          shownSales.length +
+          ' invoice' +
+          (shownSales.length === 1 ? '' : 's') +
+          ' · ' +
+          rangeLabel
+        }
+        padding={0}
+      >
         <table className="sales-table">
           <thead>
             <tr>
