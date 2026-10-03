@@ -3,10 +3,10 @@
 //
 // KPI cards:
 //
-//   Total Sales   the number of completed sales
-//   Revenue       money in, with the average sale underneath
-//   Items Sold    units moved — the "how busy was it" number
-//   Discounts     money given away
+//   Total Sales             the count of completed sales
+//   Total without discount  gross takings before any discount
+//   Items Sold              units moved
+//   Discounts               money given away
 //
 // One date picker, defaulting to today. Every filter narrows
 // both the product summary and the invoice list.
@@ -104,20 +104,25 @@ export default function Sales({ user, branchId, branches }) {
   });
 
   // ---------- KPI numbers ----------
-  let revenue = 0;
+  //
+  // `subtotal` is what the sale would have come to at full price,
+  // before any line or sale discount. `total` is what the customer
+  // actually paid.
+  let gross = 0;      // sum of subtotals
+  let revenue = 0;    // sum of totals (what was actually paid)
   let discounts = 0;
   let completed = 0;
+
   for (const sale of sales) {
     if (sale.status === 'completed') {
-      revenue += Number(sale.total);
+      gross += Number(sale.subtotal || 0);
+      revenue += Number(sale.total || 0);
       discounts +=
         Number(sale.discount || 0) + Number(sale.item_discount || 0);
       completed += 1;
     }
   }
-  const averageSale = completed > 0 ? revenue / completed : 0;
 
-  // Total units moved — this is the "how busy" number.
   const unitsSold = byProduct.reduce(
     (sum, row) => sum + row.quantity_sold,
     0
@@ -164,26 +169,20 @@ export default function Sales({ user, branchId, branches }) {
         <StatCard
           icon={<WalletIcon />}
           tone="violet"
-          label="Revenue"
-          value={money(revenue)}
-          note={'Avg ' + money(averageSale) + ' per sale'}
-          noteTone="grey"
+          label="Total without discount"
+          value={money(gross)}
         />
         <StatCard
           icon={<PackageIcon />}
           tone="teal"
           label="Items Sold"
           value={unitsSold}
-          note={'Across ' + byProduct.length + ' product' + (byProduct.length === 1 ? '' : 's')}
-          noteTone="grey"
         />
         <StatCard
           icon={<TrendIcon />}
           tone="amber"
           label="Discounts"
           value={money(discounts)}
-          note={discounts > 0 ? 'Money given away' : 'None given'}
-          noteTone={discounts > 0 ? 'amber' : 'green'}
         />
       </div>
 
