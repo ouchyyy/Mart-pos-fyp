@@ -1,9 +1,10 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
 //
-// One date picker, defaulting to today. The date is shown on
-// the two table headers, but not on the KPI cards — the cards
-// say what they count, not which day.
+// One date picker, defaulting to today. The KPI cards are kept
+// deliberately plain — icon, label, value — with no notes
+// underneath. The date and counts live on the two table headers
+// where they belong.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -121,7 +122,6 @@ export default function Sales({ user, branchId, branches }) {
     return 'plain';
   }
 
-  // The date label, shown under each table title.
   const rangeLabel = new Date(pickedDate + 'T00:00:00').toLocaleDateString(
     undefined,
     { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }
@@ -148,32 +148,24 @@ export default function Sales({ user, branchId, branches }) {
           tone="blue"
           label="Total takings"
           value={money(total)}
-          note={completed + ' completed sales'}
-          noteTone="grey"
         />
         <StatCard
           icon={<ReceiptIcon />}
           tone="violet"
           label="Average sale"
           value={money(average)}
-          note="Across this day"
-          noteTone="grey"
         />
         <StatCard
           icon={<TrendIcon />}
           tone="amber"
           label="Discounts given"
           value={money(discounts)}
-          note={discounts > 0 ? 'Money off the till' : 'No discounts given'}
-          noteTone={discounts > 0 ? 'amber' : 'green'}
         />
         <StatCard
           icon={<SalesIcon />}
           tone="red"
           label="Cancelled"
           value={cancelled}
-          note={cancelled > 0 ? 'Look at the reasons' : 'None cancelled'}
-          noteTone={cancelled > 0 ? 'red' : 'green'}
         />
       </div>
 
