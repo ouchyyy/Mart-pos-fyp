@@ -1,11 +1,5 @@
 // ============================================================
-// Movements.jsx — every stock change, split by direction
-//
-//   mode="in"    stock that came IN  (deliveries, positive corrections)
-//   mode="out"   stock that went OUT (sales, expired, negative corrections)
-//
-// One component, two pages. The filter is three lines; everything
-// else is the same shape for both — search box, table, count.
+// Stock -movement
 // ============================================================
 
 import { useState, useEffect } from 'react';
