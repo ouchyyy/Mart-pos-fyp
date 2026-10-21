@@ -1,3 +1,4 @@
+
 create function handle_new_user()
 returns trigger
 language plpgsql
