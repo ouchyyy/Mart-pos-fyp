@@ -1,4 +1,4 @@
-// The receipt that pops up after a sale is saved.
+// The receipt that pops up after a sale is saved, 
 
 import { money, riel, dateAndTime } from '../money';
 
