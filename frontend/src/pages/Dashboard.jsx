@@ -1,25 +1,45 @@
 // ============================================================
 // Dashboard.jsx — the owner's first screen
 //
-// Three questions, in the order an owner asks them:
+// Shows:
+//   1. Alerts (expiring stock, quiet branches)
+//   2. High-level KPIs (revenue, sales count, busiest branch)
+//   3. Branch-by-branch comparison
+//   4. Top selling products (today)
+//   5. Revenue breakdown by product (today)
 //
-//   1. Is anything wrong?          -> the alert strip
-//   2. Are we doing okay?          -> today vs yesterday
-//   3. Which shop needs me?        -> the branch table
-//
-// Everything else is one click away at the bottom. This page is
-// a triage screen, not a report — if a number does not change
-// what the owner does next, it does not belong here.
-//
-// Refreshes itself every 60 seconds, so a screen left open on
-// the office wall stays current without anybody touching it.
+// Refreshes itself every 60 seconds.
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { getSalesSince, getExpiringSoon } from '../database';
+import {
+  getSalesSince,
+  getExpiringSoon,
+  getSalesByProduct,
+} from '../database';
 import { money } from '../money';
 
-export default function Dashboard({ branches, onGo }) {
+import { PageHeader, StatCard, SectionCard } from '../components/Ui';
+import {
+  WalletIcon,
+  SalesIcon,
+  BranchesIcon,
+  TrendIcon,
+  AlertTriangleIcon,
+  PackageIcon,
+} from '../components/Icons';
+import RankChart from '../components/RankChart';
+
+// Helper to get today's date as a "YYYY-MM-DD" string
+function todayString() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
+
+export default function Dashboard({ branches, onGo, user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,6 +49,7 @@ export default function Dashboard({ branches, onGo }) {
   const [totalYesterday, setTotalYesterday] = useState(0);
   const [salesYesterday, setSalesYesterday] = useState(0);
   const [branchRows, setBranchRows] = useState([]);
+  const [byProduct, setByProduct] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   useEffect(() => {
@@ -38,17 +59,8 @@ export default function Dashboard({ branches, onGo }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The window we compare against:
-  //
-  //   today      from midnight this morning to now
-  //   yesterday  from midnight yesterday to the SAME time
-  //              yesterday, so we compare like with like
-  //
-  // Comparing a full day to a part day would be meaningless by
-  // mid-morning and obviously wrong by noon.
   function windows() {
     const now = new Date();
-
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
@@ -75,18 +87,15 @@ export default function Dashboard({ branches, onGo }) {
       const { now, todayStart, yesterdayStart, yesterdaySameTime, fourHoursAgo } =
         windows();
 
-      // Every sale today, at any branch. The RLS rule allows an
-      // owner to pass null here, and refuses the same call for
-      // anyone else.
-      const today = await getSalesSince(null, todayStart.toISOString());
+      const todayStr = todayString();
 
-      // Every sale since midnight yesterday, then cut down to the
-      // same time of day. We could ask the database for the
-      // exact range but this is one round trip instead of two.
-      const sinceYesterday = await getSalesSince(
-        null,
-        yesterdayStart.toISOString()
-      );
+      // Fetch today's sales, yesterday's sales, and today's product breakdown
+      const [today, sinceYesterday, products] = await Promise.all([
+        getSalesSince(null, todayStart.toISOString()),
+        getSalesSince(null, yesterdayStart.toISOString()),
+        getSalesByProduct(null, todayStr, todayStr),
+      ]);
+
       const yesterday = sinceYesterday.filter(
         (s) => new Date(s.created_at) <= yesterdaySameTime
       );
@@ -99,11 +108,6 @@ export default function Dashboard({ branches, onGo }) {
         const tToday = todayB.reduce((sum, s) => sum + Number(s.total), 0);
         const tYesterday = yesterdayB.reduce((sum, s) => sum + Number(s.total), 0);
 
-        // "Quiet" means: had sales earlier today (so the shop is
-        // open), but none in the last four hours (so something
-        // may be wrong — till forgotten, till broken, closed
-        // early). Only checked after 10am, so a branch that has
-        // simply not opened yet does not raise a false alarm.
         const earlierToday = todayB.some(
           (s) => new Date(s.created_at) < fourHoursAgo
         );
@@ -121,7 +125,7 @@ export default function Dashboard({ branches, onGo }) {
           takings: tToday,
           yesterdayTakings: tYesterday,
           change: percentChange(tToday, tYesterday),
-          quiet: quiet,
+          quiet,
         };
       });
 
@@ -129,12 +133,7 @@ export default function Dashboard({ branches, onGo }) {
 
       // ---------- alerts ----------
       const found = [];
-
       for (const b of branches) {
-        // Expiring today. We fetch each branch's list of soon-to-
-        // expire products, then count only those whose expiry is
-        // exactly today. Yesterday's expired stock still shows up
-        // here, which is what we want — that is the worse case.
         const soon = await getExpiringSoon(b.id);
         const todayStartTime = todayStart.getTime();
         const expiringToday = soon.filter((p) => {
@@ -167,6 +166,7 @@ export default function Dashboard({ branches, onGo }) {
 
       setAlerts(found);
       setBranchRows(rows);
+      setByProduct(products);
       setTotalToday(today.reduce((s, x) => s + Number(x.total), 0));
       setSalesToday(today.length);
       setTotalYesterday(yesterday.reduce((s, x) => s + Number(x.total), 0));
@@ -179,12 +179,8 @@ export default function Dashboard({ branches, onGo }) {
     setLoading(false);
   }
 
-  // The two ways a percentage can be missing. Returning a string
-  // instead of a number keeps the render simple.
   function percentChange(today, yesterday) {
-    if (yesterday === 0) {
-      return today === 0 ? 'same' : 'new';
-    }
+    if (yesterday === 0) return today === 0 ? 'same' : 'new';
     return ((today - yesterday) / yesterday) * 100;
   }
 
@@ -195,14 +191,17 @@ export default function Dashboard({ branches, onGo }) {
 
   function changeTone(change) {
     if (change === 'same' || change === 'new') return 'grey';
-    return change >= 0 ? 'var(--green)' : 'var(--red)';
+    return change >= 0 ? 'green' : 'red';
   }
 
-  // ---------- render ----------
   if (!branches || branches.length === 0) {
     return (
       <div>
-        <h1>Dashboard</h1>
+        <PageHeader
+          breadcrumb="Overview"
+          title="Dashboard"
+          subtitle="The whole chain, at a glance."
+        />
         <div className="box">
           <p style={{ margin: 0 }}>
             No branches yet. Go to <strong>Branches</strong> and add one, then
@@ -219,29 +218,48 @@ export default function Dashboard({ branches, onGo }) {
 
   const chainChange = percentChange(totalToday, totalYesterday);
   const busiest = branchRows.length > 0 ? branchRows[0] : null;
+  const greeting = user && user.full_name ? user.full_name : 'there';
+
+  // Top sellers (by quantity)
+  const topSellers = [...byProduct]
+    .sort((a, b) => b.quantity_sold - a.quantity_sold)
+    .slice(0, 5)
+    .map((p) => ({
+      label: p.product_name,
+      amount: p.funds_received,
+      extra: p.quantity_sold + ' sold',
+    }));
 
   return (
     <div>
-      {/* ============================================================
-          Header
-          ============================================================ */}
-      <div className="reports-head">
-        <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <span className="grey small-text">
-          Updated {lastRefresh.toLocaleTimeString()}
-        </span>
-      </div>
+      <PageHeader
+        breadcrumb="Overview"
+        title="Dashboard"
+        subtitle={
+          'Welcome back, ' + greeting + '. Here is how the chain is doing today.'
+        }
+        actions={
+          <>
+            <button onClick={() => onGo('reports')}>
+              <TrendIcon /> Full reports
+            </button>
+            <button className="primary" onClick={() => onGo('branches')}>
+              <BranchesIcon /> Manage branches
+            </button>
+          </>
+        }
+      />
 
       {error && <div className="error">{error}</div>}
 
-      {/* ============================================================
-          1. Alerts — only when there is something to say
-          ============================================================ */}
+      {/* ---------- alerts ---------- */}
       {alerts.length > 0 && (
         <div className="dash-alerts">
           {alerts.map((a, i) => (
             <div key={i} className={'dash-alert ' + (a.tone || '')}>
-              <span className="dash-alert-icon">!</span>
+              <span className="dash-alert-icon">
+                <AlertTriangleIcon />
+              </span>
               <span>
                 <strong>{a.branchName}</strong> · {a.message}
               </span>
@@ -250,50 +268,69 @@ export default function Dashboard({ branches, onGo }) {
         </div>
       )}
 
-      {/* ============================================================
-          2. Today's takings, in one number
-          ============================================================ */}
-      <div className="dash-hero">
-        <div className="dash-hero-main">
-          <div className="label">Today's chain takings</div>
-          <div className="amount number">{money(totalToday)}</div>
-          <div className="compare">
-            Yesterday at this time:&nbsp;
-            <span className="number">{money(totalYesterday)}</span>
-            <span
-              className="dash-change number"
-              style={{ color: changeTone(chainChange) }}
-            >
-              {changeLabel(chainChange)}
-            </span>
-          </div>
-        </div>
+      {/* ---------- KPIs ---------- */}
+      <div className="stat-grid">
+        <StatCard
+          icon={<WalletIcon />}
+          tone="blue"
+          label="Today's Chain Takings"
+          value={money(totalToday)}
+          note={
+            'Yesterday ' +
+            money(totalYesterday) +
+            '  ' +
+            changeLabel(chainChange)
+          }
+          noteTone={changeTone(chainChange)}
+        />
 
-        <div className="dash-hero-side">
-          <div className="dash-side-row">
-            <span className="grey">Sales today</span>
-            <strong className="number">{salesToday}</strong>
-          </div>
-          <div className="dash-side-row">
-            <span className="grey">Sales yesterday</span>
-            <strong className="number">{salesYesterday}</strong>
-          </div>
-          <div className="dash-side-row">
-            <span className="grey">Busiest branch</span>
-            <strong>{busiest && busiest.takings > 0 ? busiest.name : '—'}</strong>
-          </div>
-        </div>
+        <StatCard
+          icon={<SalesIcon />}
+          tone="violet"
+          label="Sales Today"
+          value={salesToday}
+          note={
+            'Yesterday ' +
+            salesYesterday +
+            '  ' +
+            changeLabel(percentChange(salesToday, salesYesterday))
+          }
+          noteTone={changeTone(percentChange(salesToday, salesYesterday))}
+        />
+
+        <StatCard
+          icon={<BranchesIcon />}
+          tone="green"
+          label="Busiest Branch"
+          value={busiest && busiest.takings > 0 ? busiest.name : '—'}
+          note={
+            busiest && busiest.takings > 0
+              ? money(busiest.takings) + ' today'
+              : 'No sales yet'
+          }
+          noteTone="grey"
+        />
+
+        <StatCard
+          icon={<TrendIcon />}
+          tone="amber"
+          label="Average per Branch"
+          value={money(branchRows.length > 0 ? totalToday / branchRows.length : 0)}
+          note={'Across ' + branchRows.length + ' branches'}
+          noteTone="grey"
+        />
       </div>
 
-      {/* ============================================================
-          3. Branches side by side
-          ============================================================ */}
-      <div className="box" style={{ padding: 0 }}>
-        <div className="panel-head">
-          <h2 style={{ margin: 0 }}>Branches</h2>
-          <span className="grey small-text">Today, compared with yesterday</span>
-        </div>
-
+      {/* ---------- branches ---------- */}
+      <SectionCard
+        icon={<BranchesIcon />}
+        title="Branches Performance"
+        count={
+          branchRows.length +
+          (branchRows.length === 1 ? ' branch · today' : ' branches · today')
+        }
+        padding={0}
+      >
         <table>
           <thead>
             <tr>
@@ -327,7 +364,12 @@ export default function Dashboard({ branches, onGo }) {
                 <td
                   className="right number"
                   style={{
-                    color: changeTone(row.change),
+                    color:
+                      changeTone(row.change) === 'green'
+                        ? 'var(--green)'
+                        : changeTone(row.change) === 'red'
+                        ? 'var(--red)'
+                        : 'var(--muted)',
                     fontWeight: 600,
                   }}
                 >
@@ -337,24 +379,60 @@ export default function Dashboard({ branches, onGo }) {
             ))}
           </tbody>
         </table>
+      </SectionCard>
+
+      {/* ---------- product insights (today) ---------- */}
+      <div className="side-by-side equal" style={{ marginTop: 24 }}>
+        {/* Top Sellers */}
+        <SectionCard
+          icon={<TrendIcon />}
+          title="Top Selling Products"
+          count="Today · by quantity"
+        >
+          {topSellers.length > 0 ? (
+            <RankChart rows={topSellers} />
+          ) : (
+            <div className="empty small-text">No products sold yet today.</div>
+          )}
+        </SectionCard>
+
+        {/* Revenue by Product */}
+        <SectionCard
+          icon={<PackageIcon />}
+          title="Revenue by Product"
+          count="Today · all branches"
+          padding={0}
+        >
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="right">Qty</th>
+                  <th className="right">Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byProduct.map((p) => (
+                  <tr key={p.product_id}>
+                    <td>{p.product_name}</td>
+                    <td className="right number">{p.quantity_sold}</td>
+                    <td className="right number total-cell">
+                      {money(p.funds_received)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {byProduct.length === 0 && (
+              <div className="empty small-text">Nothing sold yet today.</div>
+            )}
+          </div>
+        </SectionCard>
       </div>
 
-      {/* ============================================================
-          4. Where to go next
-          ============================================================ */}
-      <div className="dash-links">
-        <button onClick={() => onGo('reports')}>
-          Full reports <span className="arrow">→</span>
-        </button>
-        <button onClick={() => onGo('stock')}>
-          Check stock <span className="arrow">→</span>
-        </button>
-        <button onClick={() => onGo('sales')}>
-          Look at sales <span className="arrow">→</span>
-        </button>
-        <button onClick={() => onGo('branches')}>
-          Manage branches <span className="arrow">→</span>
-        </button>
+      <div className="grey small-text" style={{ marginTop: 24 }}>
+        Updated {lastRefresh.toLocaleTimeString()} · refreshes every minute
       </div>
     </div>
   );
