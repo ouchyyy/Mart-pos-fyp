@@ -8,6 +8,7 @@ import {
   getExpiringSoon,
   getSalesByProduct,
   getSalesProfit,
+  getProfitByBranch,
 } from '../database';
 import { money } from '../money';
 
@@ -79,12 +80,13 @@ export default function Dashboard({ branches, onGo, user }) {
       const { now, todayStart, yesterdayStart, yesterdaySameTime, fourHoursAgo } = windows();
       const todayStr = todayString();
 
-      // Fetch sales, profit, and product breakdown in parallel
-      const [today, sinceYesterday, products, profitData] = await Promise.all([
+      // Fetch everything in parallel
+      const [today, sinceYesterday, products, profitData, branchProfits] = await Promise.all([
         getSalesSince(null, todayStart.toISOString()),
         getSalesSince(null, yesterdayStart.toISOString()),
         getSalesByProduct(null, todayStr, todayStr),
         getSalesProfit(null, todayStr, todayStr),
+        getProfitByBranch(todayStr, todayStr),
       ]);
 
       const yesterday = sinceYesterday.filter(
@@ -108,8 +110,7 @@ export default function Dashboard({ branches, onGo, user }) {
           code: b.code,
           sales: todayB.length,
           takings: tToday,
-          yesterdayTakings: tYesterday,
-          change: percentChange(tToday, tYesterday),
+          profit: branchProfits[b.id]?.profit || 0,
           quiet,
         };
       });
@@ -276,7 +277,7 @@ export default function Dashboard({ branches, onGo, user }) {
               <th>Branch</th>
               <th className="right">Sales</th>
               <th className="right">Takings</th>
-              <th className="right">vs yesterday</th>
+              <th className="right">Profit</th>
             </tr>
           </thead>
           <tbody>
@@ -289,8 +290,8 @@ export default function Dashboard({ branches, onGo, user }) {
                 </td>
                 <td className="right number">{row.sales}</td>
                 <td className="right number">{money(row.takings)}</td>
-                <td className="right number" style={{ color: changeTone(row.change) === 'green' ? 'var(--green)' : changeTone(row.change) === 'red' ? 'var(--red)' : 'var(--muted)', fontWeight: 600 }}>
-                  {changeLabel(row.change)}
+                <td className="right number" style={{ color: row.profit < 0 ? 'var(--red)' : 'var(--green)', fontWeight: 600 }}>
+                  {money(row.profit)}
                 </td>
               </tr>
             ))}
