@@ -3,17 +3,17 @@
 //
 // KPI cards:
 //
-//   Total Sales             the count of completed sales
-//   Total without discount  gross takings before any discount
-//   Items Sold              units moved
-//   Discounts               money given away
+//   Total Sales   the count of completed sales
+//   Total Intake  money that actually came in (revenue)
+//   Profit        intake minus cost of goods sold
+//   Discounts     money given away
 //
 // One date picker, defaulting to today. Every filter narrows
 // both the product summary and the invoice list.
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { getSales, getSale, getSalesByProduct } from '../database';
+import { getSales, getSale, getSalesByProduct, getSalesProfit } from '../database';
 import { money, dateAndTime } from '../money';
 
 import { PageHeader, StatCard, SectionCard } from '../components/Ui';
@@ -23,6 +23,7 @@ import {
   TrendIcon,
   SearchIcon2,
   PackageIcon,
+  TagIcon,
 } from '../components/Icons';
 import Receipt from '../components/Receipt';
 
@@ -37,6 +38,7 @@ function todayString() {
 export default function Sales({ user, branchId, branches }) {
   const [sales, setSales] = useState([]);
   const [byProduct, setByProduct] = useState([]);
+  const [profitData, setProfitData] = useState({ revenue: 0, cogs: 0, profit: 0 });
   const [pickedDate, setPickedDate] = useState(todayString());
   const [pickedBranch, setPickedBranch] = useState('');
   const [search, setSearch] = useState('');
@@ -60,13 +62,15 @@ export default function Sales({ user, branchId, branches }) {
           : Number(pickedBranch)
         : branchId;
 
-      const [salesList, productList] = await Promise.all([
+      const [salesList, productList, profit] = await Promise.all([
         getSales(filter, pickedDate, pickedDate),
         getSalesByProduct(filter, pickedDate, pickedDate),
+        getSalesProfit(filter, pickedDate, pickedDate),
       ]);
 
       setSales(salesList);
       setByProduct(productList);
+      setProfitData(profit);
     } catch (err) {
       setError(err.message);
     }
@@ -104,25 +108,18 @@ export default function Sales({ user, branchId, branches }) {
   });
 
   // ---------- KPI numbers ----------
-  let gross = 0;
-  let revenue = 0;
+  let totalIntake = 0;
   let discounts = 0;
   let completed = 0;
 
   for (const sale of sales) {
     if (sale.status === 'completed') {
-      gross += Number(sale.subtotal || 0);
-      revenue += Number(sale.total || 0);
+      totalIntake += Number(sale.total || 0);
       discounts +=
         Number(sale.discount || 0) + Number(sale.item_discount || 0);
       completed += 1;
     }
   }
-
-  const unitsSold = byProduct.reduce(
-    (sum, row) => sum + row.quantity_sold,
-    0
-  );
 
   const hasFilter = pickedBranch !== '' || search !== '';
 
@@ -158,17 +155,17 @@ export default function Sales({ user, branchId, branches }) {
         <StatCard
           icon={<WalletIcon />}
           tone="violet"
-          label="Total without discount"
-          value={money(gross)}
-        />
-        <StatCard
-          icon={<PackageIcon />}
-          tone="teal"
-          label="Items Sold"
-          value={unitsSold}
+          label="Total Intake"
+          value={money(totalIntake)}
         />
         <StatCard
           icon={<TrendIcon />}
+          tone="green"
+          label="Profit"
+          value={money(profitData.profit)}
+        />
+        <StatCard
+          icon={<TagIcon />}
           tone="amber"
           label="Discounts"
           value={money(discounts)}
