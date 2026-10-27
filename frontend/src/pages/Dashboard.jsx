@@ -135,7 +135,6 @@ export default function Dashboard({ branches, onGo }) {
 
   return (
     <div>
-      {/* Subtitle and greeting removed */}
       <PageHeader
         breadcrumb="Overview"
         title="Dashboard"
@@ -149,7 +148,6 @@ export default function Dashboard({ branches, onGo }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* KPI notes removed */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
