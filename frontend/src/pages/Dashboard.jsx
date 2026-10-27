@@ -1,11 +1,18 @@
 // ============================================================
 // Dashboard.jsx — the owner's first screen
+//
+// Shows:
+//   1. High-level KPIs (intake, profit, sales count, busiest)
+//   2. Branch-by-branch comparison
+//   3. Top selling products (today)
+//   4. Revenue breakdown by product (today)
+//
+// Refreshes itself every 60 seconds.
 // ============================================================
 
 import { useState, useEffect } from 'react';
 import {
   getSalesSince,
-  getExpiringSoon,
   getSalesByProduct,
   getSalesProfit,
   getProfitByBranch,
@@ -18,7 +25,6 @@ import {
   SalesIcon,
   BranchesIcon,
   TrendIcon,
-  AlertTriangleIcon,
   PackageIcon,
 } from '../components/Icons';
 import RankChart from '../components/RankChart';
@@ -35,7 +41,6 @@ export default function Dashboard({ branches, onGo, user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [alerts, setAlerts] = useState([]);
   const [totalToday, setTotalToday] = useState(0);
   const [salesToday, setSalesToday] = useState(0);
   const [profitToday, setProfitToday] = useState(0);
@@ -55,15 +60,9 @@ export default function Dashboard({ branches, onGo, user }) {
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
-    const yesterdayStart = new Date(todayStart);
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-
-    const yesterdaySameTime = new Date(yesterdayStart);
-    yesterdaySameTime.setHours(now.getHours(), now.getMinutes(), 0, 0);
-
     const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
 
-    return { now, todayStart, yesterdayStart, yesterdaySameTime, fourHoursAgo };
+    return { now, todayStart, fourHoursAgo };
   }
 
   async function load() {
@@ -75,20 +74,15 @@ export default function Dashboard({ branches, onGo, user }) {
     setError('');
 
     try {
-      const { now, todayStart, yesterdayStart, yesterdaySameTime, fourHoursAgo } = windows();
+      const { now, todayStart, fourHoursAgo } = windows();
       const todayStr = todayString();
 
-      const [today, sinceYesterday, products, profitData, branchProfits] = await Promise.all([
+      const [today, products, profitData, branchProfits] = await Promise.all([
         getSalesSince(null, todayStart.toISOString()),
-        getSalesSince(null, yesterdayStart.toISOString()),
         getSalesByProduct(null, todayStr, todayStr),
         getSalesProfit(null, todayStr, todayStr),
         getProfitByBranch(todayStr, todayStr),
       ]);
-
-      const yesterday = sinceYesterday.filter(
-        (s) => new Date(s.created_at) <= yesterdaySameTime
-      );
 
       const rows = branches.map((b) => {
         const todayB = today.filter((s) => s.branch_id === b.id);
@@ -111,31 +105,6 @@ export default function Dashboard({ branches, onGo, user }) {
 
       rows.sort((a, b) => b.takings - a.takings);
 
-      const found = [];
-      for (const b of branches) {
-        const soon = await getExpiringSoon(b.id);
-        const todayStartTime = todayStart.getTime();
-        const expiringToday = soon.filter((p) => {
-          const exp = new Date(p.expiry_date);
-          exp.setHours(0, 0, 0, 0);
-          return exp.getTime() <= todayStartTime;
-        });
-
-        if (expiringToday.length > 0) {
-          found.push({
-            branchName: b.name,
-            message: expiringToday.length + (expiringToday.length === 1 ? ' product expiring today' : ' products expiring today'),
-            tone: 'urgent',
-          });
-        }
-
-        const row = rows.find((r) => r.id === b.id);
-        if (row && row.quiet) {
-          found.push({ branchName: b.name, message: 'no sales in the last 4 hours', tone: 'quiet' });
-        }
-      }
-
-      setAlerts(found);
       setBranchRows(rows);
       setByProduct(products);
       setTotalToday(today.reduce((s, x) => s + Number(x.total), 0));
@@ -152,7 +121,7 @@ export default function Dashboard({ branches, onGo, user }) {
   if (!branches || branches.length === 0) {
     return (
       <div>
-        <PageHeader breadcrumb="Overview" title="Dashboard" subtitle="The whole chain, at a glance." />
+        <PageHeader breadcrumb="Overview" title="Dashboard" />
         <div className="box">
           <p style={{ margin: 0 }}>No branches yet. Go to <strong>Branches</strong> and add one, then come back here.</p>
         </div>
@@ -163,7 +132,6 @@ export default function Dashboard({ branches, onGo, user }) {
   if (loading) return <div className="empty">Loading...</div>;
 
   const busiest = branchRows.length > 0 ? branchRows[0] : null;
-  const greeting = user && user.full_name ? user.full_name : 'there';
 
   const topSellers = [...byProduct]
     .sort((a, b) => b.quantity_sold - a.quantity_sold)
@@ -179,7 +147,6 @@ export default function Dashboard({ branches, onGo, user }) {
       <PageHeader
         breadcrumb="Overview"
         title="Dashboard"
-        subtitle={'Welcome back, ' + greeting + '. Here is how the chain is doing today.'}
         actions={
           <>
             <button onClick={() => onGo('reports')}><TrendIcon /> Full reports</button>
@@ -189,17 +156,6 @@ export default function Dashboard({ branches, onGo, user }) {
       />
 
       {error && <div className="error">{error}</div>}
-
-      {alerts.length > 0 && (
-        <div className="dash-alerts">
-          {alerts.map((a, i) => (
-            <div key={i} className={'dash-alert ' + (a.tone || '')}>
-              <span className="dash-alert-icon"><AlertTriangleIcon /></span>
-              <span><strong>{a.branchName}</strong> · {a.message}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ---------- KPIs ---------- */}
       <div className="stat-grid">
