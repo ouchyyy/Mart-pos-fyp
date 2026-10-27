@@ -641,3 +641,38 @@ export function resetStaffPassword(userId, password) {
     password,
   });
 }
+
+// ------------------------------------------------------------
+// Sales profit — revenue vs cost of goods sold
+//
+// Calculates the total revenue, the total cost of the items
+// sold (using the current product cost_price as a good
+// estimate), and the resulting profit.
+// ------------------------------------------------------------
+export async function getSalesProfit(branchId, fromDate, toDate) {
+  let q = supabase
+    .from('sale_items')
+    .select('quantity, line_total, products(cost_price), sales!inner(created_at, status, branch_id)')
+    .eq('sales.status', 'completed');
+
+  if (branchId) q = q.eq('sales.branch_id', branchId);
+  if (fromDate) q = q.gte('sales.created_at', dayStart(fromDate));
+  if (toDate)   q = q.lte('sales.created_at', dayEnd(toDate));
+
+  const rows = check(await q);
+
+  let revenue = 0;
+  let cogs = 0; // Cost of Goods Sold
+
+  for (const row of rows) {
+    revenue += Number(row.line_total);
+    const cost = row.products ? Number(row.products.cost_price) : 0;
+    cogs += cost * row.quantity;
+  }
+
+  return {
+    revenue,
+    cogs,
+    profit: revenue - cogs,
+  };
+}
