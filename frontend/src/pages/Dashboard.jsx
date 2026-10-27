@@ -1,3 +1,7 @@
+// ============================================================
+// Dashboard.jsx — the owner's first screen
+// ============================================================
+
 import { useState, useEffect } from 'react';
 import {
   getSalesSince,
@@ -25,7 +29,7 @@ function todayString() {
   return yyyy + '-' + mm + '-' + dd;
 }
 
-export default function Dashboard({ branches, onGo, user }) {
+export default function Dashboard({ branches, onGo }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -63,6 +67,7 @@ export default function Dashboard({ branches, onGo, user }) {
       const { now, todayStart, fourHoursAgo } = windows();
       const todayStr = todayString();
 
+      // Fetch sales, profit, and product breakdown in parallel
       const [today, products, profitData, branchProfits] = await Promise.all([
         getSalesSince(null, todayStart.toISOString()),
         getSalesByProduct(null, todayStr, todayStr),
@@ -130,6 +135,7 @@ export default function Dashboard({ branches, onGo, user }) {
 
   return (
     <div>
+      {/* Subtitle and greeting removed */}
       <PageHeader
         breadcrumb="Overview"
         title="Dashboard"
@@ -143,6 +149,7 @@ export default function Dashboard({ branches, onGo, user }) {
 
       {error && <div className="error">{error}</div>}
 
+      {/* KPI notes removed */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -150,18 +157,21 @@ export default function Dashboard({ branches, onGo, user }) {
           label="Total Intake"
           value={money(totalToday)}
         />
+
         <StatCard
           icon={<TrendIcon />}
           tone="green"
           label="Income (Profit)"
           value={money(profitToday)}
         />
+
         <StatCard
           icon={<SalesIcon />}
           tone="violet"
           label="Sales Today"
           value={salesToday}
         />
+
         <StatCard
           icon={<BranchesIcon />}
           tone="teal"
@@ -170,6 +180,7 @@ export default function Dashboard({ branches, onGo, user }) {
         />
       </div>
 
+      {/* ---------- branches ---------- */}
       <SectionCard
         icon={<BranchesIcon />}
         title="Branches Performance"
@@ -204,6 +215,7 @@ export default function Dashboard({ branches, onGo, user }) {
         </table>
       </SectionCard>
 
+      {/* ---------- product insights ---------- */}
       <div className="side-by-side equal" style={{ marginTop: 24 }}>
         <SectionCard icon={<TrendIcon />} title="Top Selling Products" count="Today · by quantity">
           {topSellers.length > 0 ? <RankChart rows={topSellers} /> : <div className="empty small-text">No products sold yet today.</div>}
