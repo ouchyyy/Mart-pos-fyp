@@ -1,15 +1,3 @@
-// ============================================================
-// Dashboard.jsx — the owner's first screen
-//
-// Shows:
-//   1. High-level KPIs (intake, profit, sales count, busiest)
-//   2. Branch-by-branch comparison
-//   3. Top selling products (today)
-//   4. Revenue breakdown by product (today)
-//
-// Refreshes itself every 60 seconds.
-// ============================================================
-
 import { useState, useEffect } from 'react';
 import {
   getSalesSince,
@@ -59,9 +47,7 @@ export default function Dashboard({ branches, onGo, user }) {
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
-
     const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-
     return { now, todayStart, fourHoursAgo };
   }
 
@@ -157,7 +143,6 @@ export default function Dashboard({ branches, onGo, user }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* ---------- KPIs ---------- */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -165,21 +150,18 @@ export default function Dashboard({ branches, onGo, user }) {
           label="Total Intake"
           value={money(totalToday)}
         />
-
         <StatCard
           icon={<TrendIcon />}
           tone="green"
           label="Income (Profit)"
           value={money(profitToday)}
         />
-
         <StatCard
           icon={<SalesIcon />}
           tone="violet"
           label="Sales Today"
           value={salesToday}
         />
-
         <StatCard
           icon={<BranchesIcon />}
           tone="teal"
@@ -188,7 +170,6 @@ export default function Dashboard({ branches, onGo, user }) {
         />
       </div>
 
-      {/* ---------- branches ---------- */}
       <SectionCard
         icon={<BranchesIcon />}
         title="Branches Performance"
@@ -223,7 +204,6 @@ export default function Dashboard({ branches, onGo, user }) {
         </table>
       </SectionCard>
 
-      {/* ---------- product insights ---------- */}
       <div className="side-by-side equal" style={{ marginTop: 24 }}>
         <SectionCard icon={<TrendIcon />} title="Top Selling Products" count="Today · by quantity">
           {topSellers.length > 0 ? <RankChart rows={topSellers} /> : <div className="empty small-text">No products sold yet today.</div>}
