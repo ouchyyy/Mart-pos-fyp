@@ -676,3 +676,38 @@ export async function getSalesProfit(branchId, fromDate, toDate) {
     profit: revenue - cogs,
   };
 }
+
+// ------------------------------------------------------------
+// Profit by branch — revenue vs cost of goods sold per branch
+//
+// Returns an object keyed by branch ID, e.g.:
+// { 1: { revenue: 100, cogs: 60, profit: 40 }, ... }
+// ------------------------------------------------------------
+export async function getProfitByBranch(fromDate, toDate) {
+  let q = supabase
+    .from('sale_items')
+    .select('quantity, line_total, products(cost_price), sales!inner(branch_id, created_at, status)')
+    .eq('sales.status', 'completed');
+
+  if (fromDate) q = q.gte('sales.created_at', dayStart(fromDate));
+  if (toDate)   q = q.lte('sales.created_at', dayEnd(toDate));
+
+  const rows = check(await q);
+  const profits = {};
+
+  for (const row of rows) {
+    const bId = row.sales.branch_id;
+    if (!profits[bId]) {
+      profits[bId] = { revenue: 0, cogs: 0, profit: 0 };
+    }
+    
+    const rev = Number(row.line_total);
+    const cost = row.products ? Number(row.products.cost_price) * row.quantity : 0;
+    
+    profits[bId].revenue += rev;
+    profits[bId].cogs += cost;
+    profits[bId].profit += (rev - cost);
+  }
+
+  return profits;
+}
