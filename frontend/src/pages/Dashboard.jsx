@@ -39,8 +39,6 @@ export default function Dashboard({ branches, onGo, user }) {
   const [totalToday, setTotalToday] = useState(0);
   const [salesToday, setSalesToday] = useState(0);
   const [profitToday, setProfitToday] = useState(0);
-  const [totalYesterday, setTotalYesterday] = useState(0);
-  const [salesYesterday, setSalesYesterday] = useState(0);
   const [branchRows, setBranchRows] = useState([]);
   const [byProduct, setByProduct] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -80,7 +78,6 @@ export default function Dashboard({ branches, onGo, user }) {
       const { now, todayStart, yesterdayStart, yesterdaySameTime, fourHoursAgo } = windows();
       const todayStr = todayString();
 
-      // Fetch everything in parallel
       const [today, sinceYesterday, products, profitData, branchProfits] = await Promise.all([
         getSalesSince(null, todayStart.toISOString()),
         getSalesSince(null, yesterdayStart.toISOString()),
@@ -95,10 +92,7 @@ export default function Dashboard({ branches, onGo, user }) {
 
       const rows = branches.map((b) => {
         const todayB = today.filter((s) => s.branch_id === b.id);
-        const yesterdayB = yesterday.filter((s) => s.branch_id === b.id);
-
         const tToday = todayB.reduce((sum, s) => sum + Number(s.total), 0);
-        const tYesterday = yesterdayB.reduce((sum, s) => sum + Number(s.total), 0);
 
         const earlierToday = todayB.some((s) => new Date(s.created_at) < fourHoursAgo);
         const recent = todayB.filter((s) => new Date(s.created_at) >= fourHoursAgo);
@@ -147,29 +141,12 @@ export default function Dashboard({ branches, onGo, user }) {
       setTotalToday(today.reduce((s, x) => s + Number(x.total), 0));
       setSalesToday(today.length);
       setProfitToday(profitData.profit);
-      setTotalYesterday(yesterday.reduce((s, x) => s + Number(x.total), 0));
-      setSalesYesterday(yesterday.length);
       setLastRefresh(new Date());
     } catch (err) {
       setError(err.message);
     }
 
     setLoading(false);
-  }
-
-  function percentChange(today, yesterday) {
-    if (yesterday === 0) return today === 0 ? 'same' : 'new';
-    return ((today - yesterday) / yesterday) * 100;
-  }
-
-  function changeLabel(change) {
-    if (change === 'same' || change === 'new') return change;
-    return (change >= 0 ? '+' : '') + change.toFixed(0) + '%';
-  }
-
-  function changeTone(change) {
-    if (change === 'same' || change === 'new') return 'grey';
-    return change >= 0 ? 'green' : 'red';
   }
 
   if (!branches || branches.length === 0) {
@@ -185,7 +162,6 @@ export default function Dashboard({ branches, onGo, user }) {
 
   if (loading) return <div className="empty">Loading...</div>;
 
-  const chainChange = percentChange(totalToday, totalYesterday);
   const busiest = branchRows.length > 0 ? branchRows[0] : null;
   const greeting = user && user.full_name ? user.full_name : 'there';
 
@@ -232,8 +208,6 @@ export default function Dashboard({ branches, onGo, user }) {
           tone="blue"
           label="Total Intake"
           value={money(totalToday)}
-          note={'Yesterday ' + money(totalYesterday) + '  ' + changeLabel(chainChange)}
-          noteTone={changeTone(chainChange)}
         />
 
         <StatCard
@@ -241,8 +215,6 @@ export default function Dashboard({ branches, onGo, user }) {
           tone="green"
           label="Income (Profit)"
           value={money(profitToday)}
-          note="Revenue minus cost of goods"
-          noteTone="grey"
         />
 
         <StatCard
@@ -250,8 +222,6 @@ export default function Dashboard({ branches, onGo, user }) {
           tone="violet"
           label="Sales Today"
           value={salesToday}
-          note={'Yesterday ' + salesYesterday + '  ' + changeLabel(percentChange(salesToday, salesYesterday))}
-          noteTone={changeTone(percentChange(salesToday, salesYesterday))}
         />
 
         <StatCard
@@ -259,8 +229,6 @@ export default function Dashboard({ branches, onGo, user }) {
           tone="teal"
           label="Busiest Branch"
           value={busiest && busiest.takings > 0 ? busiest.name : '—'}
-          note={busiest && busiest.takings > 0 ? money(busiest.takings) + ' today' : 'No sales yet'}
-          noteTone="grey"
         />
       </div>
 
