@@ -1,22 +1,5 @@
 // ============================================================
 // Reports.jsx — how the shop is doing
-//
-// Two shapes, one page:
-//
-//   "All branches"    the whole chain, combined. Plus a
-//                     per-branch breakdown table.
-//
-//   "<branch name>"   exactly what a branch admin sees —
-//                     one shop's cards, charts and warnings.
-//
-// The owner gets a tab bar to pick between them. Everyone else
-// sees only the second shape, for their own branch. Nothing
-// changes on their screen.
-//
-// The owner's tab is independent of the branch dropdown on the
-// menu, because Reports is where you compare shops, and the menu
-// dropdown is where you "go to" a shop for the day. Mixing the
-// two would be confusing.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -28,6 +11,7 @@ import {
   getPaymentSplit,
   getLowStock,
   getExpiringSoon,
+  getSalesProfit, // <--- Added this
 } from '../database';
 import { money, shortDate, daysUntil } from '../money';
 
@@ -36,23 +20,6 @@ import DonutChart from '../components/DonutChart';
 import HoursChart from '../components/HoursChart';
 
 export default function Reports({ branchId, user, branches }) {
-  // Is this the owner, and do we have a list of branches to tab
-  // through? If not, the page behaves as it always did.
-  const canPickBranch =
-    user && user.role === 'owner' && branches && branches.length > 0;
-
-  // The view the owner has chosen:
-  //   'all'    = the whole chain
-  //   <bigint> = one branch
-  // For an admin, this stays at their own branch and the tabs
-  // are not rendered.
-  const [view, setView] = useState(canPickBranch ? 'all' : branchId);
-
-  // What we actually ask the database for:
-  //   'all'    -> null (no filter, every branch)
-  //   <bigint> -> that branch
-  const queryBranchId = view === 'all' ? null : view;
-
   const [sales, setSales] = useState([]);
   const [days, setDays] = useState(1);
   const [bestSellers, setBestSellers] = useState([]);
@@ -61,8 +28,14 @@ export default function Reports({ branchId, user, branches }) {
   const [payments, setPayments] = useState([]);
   const [lowStock, setLowStock] = useState([]);
   const [expiring, setExpiring] = useState([]);
+  const [profit, setProfit] = useState(0); // <--- Added this
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+
+  const canPickBranch =
+    user && user.role === 'owner' && branches && branches.length > 0;
+  const [view, setView] = useState(canPickBranch ? 'all' : branchId);
+  const queryBranchId = view === 'all' ? null : view;
 
   useEffect(() => {
     load();
@@ -77,10 +50,11 @@ export default function Reports({ branchId, user, branches }) {
   }
 
   async function load() {
-    // An admin with no branch and no owner mode: nothing to show.
-    if (!canPickBranch && !branchId) {
-      setLoading(false);
-      return;
+    if (queryBranchId === undefined || queryBranchId === null && !canPickBranch) {
+      if (!canPickBranch && !branchId) {
+        setLoading(false);
+        return;
+      }
     }
 
     setLoading(true);
@@ -95,10 +69,11 @@ export default function Reports({ branchId, user, branches }) {
       setByCategory(await getSalesByCategory(b, since));
       setByHour(await getBusiestHours(b, since));
       setPayments(await getPaymentSplit(b, since));
+      
+      // Fetch profit here
+      const profitData = await getSalesProfit(b, since);
+      setProfit(profitData.profit);
 
-      // Low stock and expiry warnings only mean something for one
-      // shop — "Milk is out" is not a chain-wide fact. In the
-      // all-branches view we skip them and tell the reader why.
       if (b) {
         setLowStock(await getLowStock(b));
         setExpiring(await getExpiringSoon(b));
@@ -113,7 +88,6 @@ export default function Reports({ branchId, user, branches }) {
     setLoading(false);
   }
 
-  // An admin with no branch assigned: nothing to show.
   if (!canPickBranch && !branchId) {
     return (
       <div>
@@ -136,7 +110,6 @@ export default function Reports({ branchId, user, branches }) {
     givenAway =
       givenAway + Number(sale.discount || 0) + Number(sale.item_discount || 0);
   }
-  const average = sales.length > 0 ? takings / sales.length : 0;
 
   const periodLabel =
     days === 1 ? 'Today' : days === 7 ? 'Last 7 days' : 'Last 30 days';
@@ -169,13 +142,11 @@ export default function Reports({ branchId, user, branches }) {
       };
     });
 
-    // Best shop first — the one the owner wants to see at the top.
     chainRows.sort((a, b) => b.takings - a.takings);
   }
 
   const chainBest = chainRows.length > 0 ? chainRows[0] : null;
 
-  // The name to show in the "which report is this" heading.
   const selectedBranch = branches
     ? branches.find((b) => b.id === view)
     : null;
@@ -187,9 +158,6 @@ export default function Reports({ branchId, user, branches }) {
 
   return (
     <div>
-      {/* ============================================================
-          Header: heading, branch tabs, period buttons
-          ============================================================ */}
       <div className="reports-head">
         <h1 style={{ margin: 0 }}>
           Reports
@@ -216,7 +184,6 @@ export default function Reports({ branchId, user, branches }) {
         </div>
       </div>
 
-      {/* Branch tabs — owner only. */}
       {canPickBranch && (
         <div className="branch-tabs">
           <button
@@ -351,10 +318,15 @@ export default function Reports({ branchId, user, branches }) {
             <div className="label">Sales</div>
             <div className="value number">{sales.length}</div>
           </div>
+          
+          {/* CHANGED: Average Sale is now Profit */}
           <div className="card">
-            <div className="label">Average sale</div>
-            <div className="value number">{money(average)}</div>
+            <div className="label">Profit</div>
+            <div className="value number" style={{ color: 'var(--green)' }}>
+              {money(profit)}
+            </div>
           </div>
+
           <div className="card">
             <div className="label">Discounts</div>
             <div
@@ -506,8 +478,6 @@ export default function Reports({ branchId, user, branches }) {
         </div>
       )}
 
-      {/* A short note explaining why these are missing in the
-          all-branches view — so it reads as a choice, not a bug. */}
       {isAllView && (
         <div className="box" style={{ marginTop: 20 }}>
           <p style={{ margin: 0 }} className="grey small-text">
