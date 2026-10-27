@@ -310,7 +310,7 @@ export default function App() {
         style={{ flex: 1 }}
       >
         {isOwner && page === 'dashboard' && (
-          <Dashboard branches={branches} onGo={setPage} user={user} />
+         <Dashboard branches={branches} onGo={setPage} />
         )}
 
         {page === 'sell' && !isAdmin && <Sell branchId={branchId} />}
