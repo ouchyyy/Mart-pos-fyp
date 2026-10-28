@@ -1,15 +1,5 @@
 // ============================================================
 // database.js
-//
-// Every conversation with the database happens in this file.
-// The pages call these functions and never talk to Supabase
-// directly, so if data looks wrong, this is the file to open.
-//
-// The branch idea shows up here in three ways:
-//   - Most read functions take a branchId (null means "all").
-//   - Stock writes take a branchId.
-//   - save_sale does NOT take one, because the database reads
-//     it from the signed-in cashier.
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -19,8 +9,6 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// Supabase gives back { data, error } instead of throwing an error.
-// This little helper throws instead, so our pages can use try/catch.
 function check(result) {
   if (result.error) {
     throw new Error(result.error.message);
@@ -28,25 +16,14 @@ function check(result) {
   return result.data;
 }
 
-// Staff type a username like "admin", but Supabase needs an email.
-// So we add a fake domain onto the end. No email is ever sent.
 function makeEmail(username) {
   if (username.includes('@')) return username;
   return username + '@mart.local';
 }
 
 // ------------------------------------------------------------
-// Date helpers — turn "YYYY-MM-DD" into the right UTC instants
-//
-// The date input gives a plain day like "2026-09-29". If we
-// hand that straight to Postgres, it reads it as midnight UTC —
-// which is 7am in Cambodia. So a sale rung up at 6am is missed.
-//
-// These two helpers build the boundary from local midnight to
-// local 23:59:59.999, then convert to ISO. Postgres then sees
-// the exact moment the day starts and ends where you are.
+// Date helpers — turn "YYYY-MM-DD" into local UTC instants
 // ------------------------------------------------------------
-
 function dayStart(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T00:00:00');
@@ -60,7 +37,7 @@ function dayEnd(dateStr) {
 }
 
 // ------------------------------------------------------------
-// Signing in and out
+// Auth
 // ------------------------------------------------------------
 
 export async function signIn(username, password) {
@@ -68,11 +45,7 @@ export async function signIn(username, password) {
     email: makeEmail(username),
     password: password,
   });
-
-  if (result.error) {
-    throw new Error('Wrong username or password');
-  }
-
+  if (result.error) throw new Error('Wrong username or password');
   return getMyProfile();
 }
 
@@ -80,13 +53,9 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
-// Returns the signed-in person, with the branch they belong to
-// flattened in, or null if nobody is signed in.
 export async function getMyProfile() {
   const session = await supabase.auth.getSession();
-
   if (!session.data.session) return null;
-
   const myId = session.data.session.user.id;
 
   return check(
@@ -104,11 +73,7 @@ export async function getMyProfile() {
 
 export async function getBranches() {
   return check(
-    await supabase
-      .from('branches')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
+    await supabase.from('branches').select('*').eq('is_active', true).order('name')
   );
 }
 
@@ -117,9 +82,7 @@ export async function getBranchSummary() {
 }
 
 export async function addBranch(branch) {
-  return check(
-    await supabase.from('branches').insert(branch).select().single()
-  );
+  return check(await supabase.from('branches').insert(branch).select().single());
 }
 
 export async function updateBranch(id, branch) {
@@ -135,39 +98,25 @@ export async function hideBranch(id) {
 }
 
 // ------------------------------------------------------------
-// Products — the catalogue is shared across all branches
+// Products
 // ------------------------------------------------------------
 
-// Head-office view: all products, franchise-wide stock.
 export async function getProducts(search) {
-  let query = supabase
-    .from('products_for_sale')
-    .select('*')
-    .eq('is_active', true)
-    .order('name');
-
-  if (search) {
-    query = query.or('name.ilike.%' + search + '%,barcode.eq.' + search);
-  }
-
+  let query = supabase.from('products_for_sale').select('*').eq('is_active', true).order('name');
+  if (search) query = query.or('name.ilike.%' + search + '%,barcode.eq.' + search);
   return check(await query);
 }
 
-// The till reads this: one branch's view of the catalogue,
-// with that branch's stock and that branch's clearance prices.
 export async function getProductsForBranch(branchId, search) {
   const rows = check(
     await supabase.rpc('products_for_branch', { the_branch_id: branchId })
   );
-
   const active = rows.filter((p) => p.is_active);
   if (!search) return active;
 
   const text = search.toLowerCase();
   return active.filter(
-    (p) =>
-      p.name.toLowerCase().includes(text) ||
-      (p.barcode || '').includes(search)
+    (p) => p.name.toLowerCase().includes(text) || (p.barcode || '').includes(search)
   );
 }
 
@@ -179,9 +128,7 @@ export async function getProductByBarcode(barcode, branchId) {
 }
 
 export async function addProduct(product) {
-  return check(
-    await supabase.from('products').insert(product).select().single()
-  );
+  return check(await supabase.from('products').insert(product).select().single());
 }
 
 export async function updateProduct(id, product) {
@@ -191,27 +138,19 @@ export async function updateProduct(id, product) {
 }
 
 export async function hideProduct(id) {
-  return check(
-    await supabase.from('products').update({ is_active: false }).eq('id', id)
-  );
+  return check(await supabase.from('products').update({ is_active: false }).eq('id', id));
 }
-
-// ------------------------------------------------------------
-// Product pictures
-// ------------------------------------------------------------
 
 export async function uploadPicture(file) {
   const ending = file.name.split('.').pop();
   const fileName = Date.now() + '-' + Math.round(Math.random() * 10000) + '.' + ending;
-
   const upload = await supabase.storage.from('products').upload(fileName, file);
   if (upload.error) throw new Error(upload.error.message);
-
   return supabase.storage.from('products').getPublicUrl(fileName).data.publicUrl;
 }
 
 // ------------------------------------------------------------
-// Categories — shared across all branches
+// Categories
 // ------------------------------------------------------------
 
 export async function getCategories() {
@@ -219,31 +158,23 @@ export async function getCategories() {
 }
 
 export async function addCategory(name) {
-  return check(
-    await supabase.from('categories').insert({ name }).select().single()
-  );
+  return check(await supabase.from('categories').insert({ name }).select().single());
 }
 
 export async function renameCategory(id, name) {
-  return check(
-    await supabase.from('categories').update({ name }).eq('id', id)
-  );
+  return check(await supabase.from('categories').update({ name }).eq('id', id));
 }
 
 export async function deleteCategory(id) {
   const inUse = check(
     await supabase.from('products').select('id').eq('category_id', id).limit(1)
   );
-
-  if (inUse.length > 0) {
-    throw new Error('Some products are still in this category');
-  }
-
+  if (inUse.length > 0) throw new Error('Some products are still in this category');
   return check(await supabase.from('categories').delete().eq('id', id));
 }
 
 // ------------------------------------------------------------
-// Stock — per branch
+// Stock
 // ------------------------------------------------------------
 
 export async function addBatch(productId, branchId, quantity, details) {
@@ -274,6 +205,7 @@ export async function takeStock(productId, branchId, quantity, reason, note) {
 }
 
 export async function getBatches(productId, branchId) {
+  if (!productId || !branchId) return [];
   return check(
     await supabase
       .from('product_batches')
@@ -286,7 +218,6 @@ export async function getBatches(productId, branchId) {
   );
 }
 
-// branchId == null means "every branch I can see" (owner only).
 export async function getStockHistory(branchId, productId) {
   let query = supabase
     .from('stock_movements')
@@ -313,7 +244,6 @@ export async function saveSale(cart, moneyReceived, paymentMethod, discount) {
       the_discount:   Number(discount) || 0,
     })
   );
-
   return getSale(saleId);
 }
 
@@ -343,20 +273,10 @@ export async function getSales(branchId, fromDate, toDate) {
 
 export async function cancelSale(id, reason) {
   return check(
-    await supabase.rpc('cancel_sale', {
-      the_sale_id: id,
-      the_reason:  reason,
-    })
+    await supabase.rpc('cancel_sale', { the_sale_id: id, the_reason: reason })
   );
 }
 
-// ------------------------------------------------------------
-// Sales by product — every product that sold in a period
-//
-// Groups sale_items by product and totals the units sold, the
-// funds received, the discount taken, and how many distinct
-// sales contained the product.
-// ------------------------------------------------------------
 export async function getSalesByProduct(branchId, fromDate, toDate) {
   let q = supabase
     .from('sale_items')
@@ -370,12 +290,10 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
   if (toDate)   q = q.lte('sales.created_at', dayEnd(toDate));
 
   const rows = check(await q);
-
   const totals = {};
 
   for (const row of rows) {
     const key = row.product_id;
-
     if (!totals[key]) {
       totals[key] = {
         product_id: row.product_id,
@@ -387,7 +305,6 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
         sale_ids: new Set(),
       };
     }
-
     totals[key].quantity_sold += row.quantity;
     totals[key].funds_received += Number(row.line_total);
     totals[key].total_discount += Number(row.discount || 0);
@@ -401,8 +318,7 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
     quantity_sold: t.quantity_sold,
     funds_received: t.funds_received,
     total_discount: t.total_discount,
-    discount_per_unit:
-      t.quantity_sold > 0 ? t.total_discount / t.quantity_sold : 0,
+    discount_per_unit: t.quantity_sold > 0 ? t.total_discount / t.quantity_sold : 0,
     sales_count: t.sale_ids.size,
   }));
 
@@ -411,244 +327,9 @@ export async function getSalesByProduct(branchId, fromDate, toDate) {
 }
 
 // ------------------------------------------------------------
-// Reports
+// Profit Calculations
 // ------------------------------------------------------------
 
-export async function getSalesSince(branchId, fromDate) {
-  let query = supabase
-    .from('sales')
-    .select('*')
-    .eq('status', 'completed')
-    .gte('created_at', fromDate);
-
-  if (branchId) query = query.eq('branch_id', branchId);
-
-  return check(await query);
-}
-
-export async function getBestSellers(branchId, fromDate) {
-  let query = supabase
-    .from('sale_items')
-    .select('product_name, quantity, line_total, sales!inner(created_at, status, branch_id)')
-    .eq('sales.status', 'completed')
-    .gte('sales.created_at', fromDate);
-
-  if (branchId) query = query.eq('sales.branch_id', branchId);
-
-  const rows = check(await query);
-
-  const totals = {};
-  for (const row of rows) {
-    if (!totals[row.product_name]) {
-      totals[row.product_name] = { name: row.product_name, sold: 0, money: 0 };
-    }
-    totals[row.product_name].sold += row.quantity;
-    totals[row.product_name].money += Number(row.line_total);
-  }
-
-  const list = Object.values(totals);
-  list.sort((a, b) => b.sold - a.sold);
-  return list;
-}
-
-export async function getSalesByCategory(branchId, fromDate) {
-  let query = supabase
-    .from('sale_items')
-    .select('quantity, line_total, products(categories(name)), sales!inner(created_at, status, branch_id)')
-    .eq('sales.status', 'completed')
-    .gte('sales.created_at', fromDate);
-
-  if (branchId) query = query.eq('sales.branch_id', branchId);
-
-  const rows = check(await query);
-
-  const totals = {};
-  for (const row of rows) {
-    const category = row.products && row.products.categories
-      ? row.products.categories.name
-      : 'No category';
-
-    if (!totals[category]) {
-      totals[category] = { name: category, sold: 0, money: 0 };
-    }
-
-    totals[category].sold += row.quantity;
-    totals[category].money += Number(row.line_total);
-  }
-
-  const list = Object.values(totals);
-  list.sort((a, b) => b.money - a.money);
-  return list;
-}
-
-export async function getBusiestHours(branchId, fromDate) {
-  let query = supabase
-    .from('sales')
-    .select('total, created_at')
-    .eq('status', 'completed')
-    .gte('created_at', fromDate);
-
-  if (branchId) query = query.eq('branch_id', branchId);
-
-  const sales = check(await query);
-
-  const hours = [];
-  for (let hour = 0; hour < 24; hour++) {
-    hours.push({ hour, sales: 0, money: 0 });
-  }
-
-  for (const sale of sales) {
-    const hour = new Date(sale.created_at).getHours();
-    hours[hour].sales += 1;
-    hours[hour].money += Number(sale.total);
-  }
-
-  return hours;
-}
-
-export async function getPaymentSplit(branchId, fromDate) {
-  let query = supabase
-    .from('sales')
-    .select('total, payment_method')
-    .eq('status', 'completed')
-    .gte('created_at', fromDate);
-
-  if (branchId) query = query.eq('branch_id', branchId);
-
-  const sales = check(await query);
-
-  const totals = {};
-  for (const sale of sales) {
-    const how = sale.payment_method || 'cash';
-    if (!totals[how]) totals[how] = { name: how, sold: 0, money: 0 };
-    totals[how].sold += 1;
-    totals[how].money += Number(sale.total);
-  }
-
-  return Object.values(totals);
-}
-
-export async function getLowStock(branchId) {
-  const rows = check(
-    await supabase.rpc('products_for_branch', { the_branch_id: branchId })
-  );
-
-  return rows
-    .filter((p) => p.is_active && p.stock_quantity <= p.low_stock_at)
-    .sort((a, b) => a.stock_quantity - b.stock_quantity);
-}
-
-export async function getExpiringSoon(branchId) {
-  const rows = check(
-    await supabase.rpc('products_for_branch', { the_branch_id: branchId })
-  );
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const oneDay = 1000 * 60 * 60 * 24;
-
-  return rows
-    .filter((p) => p.is_active && p.stock_quantity > 0 && p.expiry_date)
-    .filter((p) => {
-      const daysLeft = Math.round((new Date(p.expiry_date) - today) / oneDay);
-      return daysLeft <= p.expiry_warn_days;
-    })
-    .sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
-}
-
-// ------------------------------------------------------------
-// Staff
-// ------------------------------------------------------------
-
-export async function getStaff(branchId, includeInactive = false) {
-  let query = supabase
-    .from('profiles')
-    .select('*, branches(id, name, code)')
-    .order('full_name');
-
-  if (branchId) query = query.eq('branch_id', branchId);
-  if (!includeInactive) query = query.eq('is_active', true);
-
-  return check(await query);
-}
-
-export async function changeStaffRole(id, role) {
-  return check(
-    await supabase.from('profiles').update({ role }).eq('id', id)
-  );
-}
-
-export async function changeStaffBranch(id, branchId) {
-  return check(
-    await supabase.from('profiles').update({ branch_id: branchId }).eq('id', id)
-  );
-}
-
-// ------------------------------------------------------------
-// Staff — creating, removing, restoring, resetting
-//
-// All of it goes through the create-staff Edge Function, because
-// every one of these needs the service role key, which only the
-// server holds. The browser just sends a request.
-// ------------------------------------------------------------
-
-async function callStaffFunction(payload) {
-  const { data, error } = await supabase.functions.invoke('create-staff', {
-    body: payload,
-  });
-
-  if (error) {
-    let message = error.message;
-    try {
-      const ctx = error.context;
-      if (ctx && typeof ctx.json === 'function') {
-        const body = await ctx.json();
-        if (body && body.error) message = body.error;
-      }
-    } catch (_) {
-      // fall back
-    }
-    throw new Error(message);
-  }
-
-  if (data && data.error) throw new Error(data.error);
-  return data;
-}
-
-export function createStaff({ username, password, fullName, role, branchId }) {
-  return callStaffFunction({
-    action: 'create',
-    username,
-    password,
-    full_name: fullName,
-    role,
-    branch_id: branchId,
-  });
-}
-
-export function removeStaff(userId) {
-  return callStaffFunction({ action: 'remove', user_id: userId });
-}
-
-export function restoreStaff(userId) {
-  return callStaffFunction({ action: 'restore', user_id: userId });
-}
-
-export function resetStaffPassword(userId, password) {
-  return callStaffFunction({
-    action: 'reset-password',
-    user_id: userId,
-    password,
-  });
-}
-
-// ------------------------------------------------------------
-// Sales profit — revenue vs cost of goods sold
-//
-// Calculates the total revenue, the total cost of the items
-// sold (using the current product cost_price as a good
-// estimate), and the resulting profit.
-// ------------------------------------------------------------
 export async function getSalesProfit(branchId, fromDate, toDate) {
   let q = supabase
     .from('sale_items')
@@ -660,9 +341,8 @@ export async function getSalesProfit(branchId, fromDate, toDate) {
   if (toDate)   q = q.lte('sales.created_at', dayEnd(toDate));
 
   const rows = check(await q);
-
   let revenue = 0;
-  let cogs = 0; // Cost of Goods Sold
+  let cogs = 0;
 
   for (const row of rows) {
     revenue += Number(row.line_total);
@@ -670,19 +350,9 @@ export async function getSalesProfit(branchId, fromDate, toDate) {
     cogs += cost * row.quantity;
   }
 
-  return {
-    revenue,
-    cogs,
-    profit: revenue - cogs,
-  };
+  return { revenue, cogs, profit: revenue - cogs };
 }
 
-// ------------------------------------------------------------
-// Profit by branch — revenue vs cost of goods sold per branch
-//
-// Returns an object keyed by branch ID, e.g.:
-// { 1: { revenue: 100, cogs: 60, profit: 40 }, ... }
-// ------------------------------------------------------------
 export async function getProfitByBranch(fromDate, toDate) {
   let q = supabase
     .from('sale_items')
@@ -700,14 +370,145 @@ export async function getProfitByBranch(fromDate, toDate) {
     if (!profits[bId]) {
       profits[bId] = { revenue: 0, cogs: 0, profit: 0 };
     }
-    
     const rev = Number(row.line_total);
     const cost = row.products ? Number(row.products.cost_price) * row.quantity : 0;
-    
     profits[bId].revenue += rev;
     profits[bId].cogs += cost;
     profits[bId].profit += (rev - cost);
   }
 
   return profits;
+}
+
+// ------------------------------------------------------------
+// Reports
+// ------------------------------------------------------------
+
+export async function getSalesSince(branchId, fromDate) {
+  let query = supabase.from('sales').select('*').eq('status', 'completed').gte('created_at', fromDate);
+  if (branchId) query = query.eq('branch_id', branchId);
+  return check(await query);
+}
+
+export async function getBestSellers(branchId, fromDate) {
+  let query = supabase.from('sale_items').select('product_name, quantity, line_total, sales!inner(created_at, status, branch_id)').eq('sales.status', 'completed').gte('sales.created_at', fromDate);
+  if (branchId) query = query.eq('sales.branch_id', branchId);
+  const rows = check(await query);
+  const totals = {};
+  for (const row of rows) {
+    if (!totals[row.product_name]) totals[row.product_name] = { name: row.product_name, sold: 0, money: 0 };
+    totals[row.product_name].sold += row.quantity;
+    totals[row.product_name].money += Number(row.line_total);
+  }
+  const list = Object.values(totals);
+  list.sort((a, b) => b.sold - a.sold);
+  return list;
+}
+
+export async function getSalesByCategory(branchId, fromDate) {
+  let query = supabase.from('sale_items').select('quantity, line_total, products(categories(name)), sales!inner(created_at, status, branch_id)').eq('sales.status', 'completed').gte('sales.created_at', fromDate);
+  if (branchId) query = query.eq('sales.branch_id', branchId);
+  const rows = check(await query);
+  const totals = {};
+  for (const row of rows) {
+    const category = row.products && row.products.categories ? row.products.categories.name : 'No category';
+    if (!totals[category]) totals[category] = { name: category, sold: 0, money: 0 };
+    totals[category].sold += row.quantity;
+    totals[category].money += Number(row.line_total);
+  }
+  const list = Object.values(totals);
+  list.sort((a, b) => b.money - a.money);
+  return list;
+}
+
+export async function getBusiestHours(branchId, fromDate) {
+  let query = supabase.from('sales').select('total, created_at').eq('status', 'completed').gte('created_at', fromDate);
+  if (branchId) query = query.eq('branch_id', branchId);
+  const sales = check(await query);
+  const hours = [];
+  for (let h = 0; h < 24; h++) hours.push({ hour: h, sales: 0, money: 0 });
+  for (const sale of sales) {
+    const h = new Date(sale.created_at).getHours();
+    hours[h].sales += 1;
+    hours[h].money += Number(sale.total);
+  }
+  return hours;
+}
+
+export async function getPaymentSplit(branchId, fromDate) {
+  let query = supabase.from('sales').select('total, payment_method').eq('status', 'completed').gte('created_at', fromDate);
+  if (branchId) query = query.eq('branch_id', branchId);
+  const sales = check(await query);
+  const totals = {};
+  for (const sale of sales) {
+    const how = sale.payment_method || 'cash';
+    if (!totals[how]) totals[how] = { name: how, sold: 0, money: 0 };
+    totals[how].sold += 1;
+    totals[how].money += Number(sale.total);
+  }
+  return Object.values(totals);
+}
+
+export async function getLowStock(branchId) {
+  const rows = check(await supabase.rpc('products_for_branch', { the_branch_id: branchId }));
+  return rows.filter((p) => p.is_active && p.stock_quantity <= p.low_stock_at).sort((a, b) => a.stock_quantity - b.stock_quantity);
+}
+
+export async function getExpiringSoon(branchId) {
+  const rows = check(await supabase.rpc('products_for_branch', { the_branch_id: branchId }));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const oneDay = 1000 * 60 * 60 * 24;
+  return rows.filter((p) => p.is_active && p.stock_quantity > 0 && p.expiry_date).filter((p) => {
+    const daysLeft = Math.round((new Date(p.expiry_date) - today) / oneDay);
+    return daysLeft <= p.expiry_warn_days;
+  }).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+}
+
+// ------------------------------------------------------------
+// Staff
+// ------------------------------------------------------------
+
+export async function getStaff(branchId, includeInactive = false) {
+  let query = supabase.from('profiles').select('*, branches(id, name, code)').order('full_name');
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (!includeInactive) query = query.eq('is_active', true);
+  return check(await query);
+}
+
+export async function changeStaffRole(id, role) {
+  return check(await supabase.from('profiles').update({ role }).eq('id', id));
+}
+
+export async function changeStaffBranch(id, branchId) {
+  return check(await supabase.from('profiles').update({ branch_id: branchId }).eq('id', id));
+}
+
+async function callStaffFunction(payload) {
+  const { data, error } = await supabase.functions.invoke('create-staff', { body: payload });
+  if (error) {
+    let message = error.message;
+    try {
+      const ctx = error.context;
+      if (ctx && typeof ctx.json === 'function') {
+        const body = await ctx.json();
+        if (body && body.error) message = body.error;
+      }
+    } catch (_) {}
+    throw new Error(message);
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+
+export function createStaff({ username, password, fullName, role, branchId }) {
+  return callStaffFunction({ action: 'create', username, password, full_name: fullName, role, branch_id: branchId });
+}
+export function removeStaff(userId) {
+  return callStaffFunction({ action: 'remove', user_id: userId });
+}
+export function restoreStaff(userId) {
+  return callStaffFunction({ action: 'restore', user_id: userId });
+}
+export function resetStaffPassword(userId, password) {
+  return callStaffFunction({ action: 'reset-password', user_id: userId, password });
 }
