@@ -21,6 +21,8 @@ import {
   TrendIcon,
   TagIcon,
   PackageIcon,
+  AlertTriangleIcon,
+  ClockIcon,
 } from '../components/Icons';
 
 import RankChart from '../components/RankChart';
@@ -50,7 +52,6 @@ export default function Reports({ branchId, user, branches }) {
   }, [days, view]);
 
   function startOfPeriod() {
-    // Defensive check to prevent "Invalid time value" crashes
     const d = Number(days) || 1;
     const start = new Date();
     start.setDate(start.getDate() - (d - 1));
@@ -90,6 +91,7 @@ export default function Reports({ branchId, user, branches }) {
       setByHour(hourData);
       setPayments(paymentData);
 
+      // Alerts only make sense for a specific branch
       if (b) {
         setLowStock(await getLowStock(b));
         setExpiring(await getExpiringSoon(b));
@@ -242,6 +244,80 @@ export default function Reports({ branchId, user, branches }) {
           <p className="chart-note">{periodLabel} {isAllView ? '· all branches' : ''}</p>
           <DonutChart slices={payments.map((r) => ({ name: r.name === 'qr' ? 'QR code' : 'Cash', money: r.money }))} />
         </SectionCard>
+      )}
+
+      {/* Row 4: Alerts (Only if a specific branch is selected) */}
+      {!isAllView && (
+        <div className="side-by-side equal" style={{ marginTop: 20 }}>
+          
+          {/* Running Low */}
+          <SectionCard icon={<AlertTriangleIcon />} title="Running low">
+            <table>
+              <tbody>
+                {lowStock.map((product) => (
+                  <tr key={product.id}>
+                    <td>{product.name}</td>
+                    <td className="right">
+                      <span
+                        className={
+                          product.stock_quantity === 0
+                            ? 'tag out number'
+                            : 'tag warning number'
+                        }
+                      >
+                        {product.stock_quantity === 0
+                          ? 'out'
+                          : product.stock_quantity + ' left'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {lowStock.length === 0 && (
+              <div className="empty small-text">Everything is stocked up.</div>
+            )}
+          </SectionCard>
+
+          {/* Expiring Soon */}
+          <SectionCard icon={<ClockIcon />} title="Expiring soon">
+            <p className="chart-note" style={{ marginTop: -10 }}>
+              Marked down automatically: 50% off inside 14 days, 75% inside 7.
+            </p>
+            <table>
+              <tbody>
+                {expiring.map((product) => {
+                  const daysLeft = daysUntil(product.expiry_date);
+                  return (
+                    <tr key={product.id}>
+                      <td>
+                        {product.name}
+                        <div className="grey small-text">
+                          {shortDate(product.expiry_date)}
+                        </div>
+                      </td>
+                      <td className="right">
+                        {product.clearance_percent > 0 && (
+                          <div className="clearance-price number">
+                            {money(product.price_today)}
+                            <span className="was"> {money(product.selling_price)}</span>
+                          </div>
+                        )}
+                        <span className={daysLeft < 0 ? 'tag out' : 'tag warning'}>
+                          {daysLeft < 0 ? 'expired' : daysLeft + ' days'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {expiring.length === 0 && (
+              <div className="empty small-text">Nothing expiring soon.</div>
+            )}
+          </SectionCard>
+
+        </div>
       )}
     </div>
   );
