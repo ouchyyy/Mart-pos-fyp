@@ -8,6 +8,8 @@ import {
   getSalesByProduct,
   getSalesProfit,
   getProfitByBranch,
+  getSales,
+  getExpiringSoon,
 } from '../database';
 import { money } from '../money';
 
@@ -17,7 +19,9 @@ import {
   SalesIcon,
   BranchesIcon,
   TrendIcon,
+  AlertTriangleIcon,
   PackageIcon,
+  CalendarIcon,
 } from '../components/Icons';
 import RankChart from '../components/RankChart';
 
@@ -33,6 +37,10 @@ export default function Dashboard({ branches, onGo }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Default to today
+  const [pickedDate, setPickedDate] = useState(todayString());
+  
+  const [alerts, setAlerts] = useState([]);
   const [totalToday, setTotalToday] = useState(0);
   const [salesToday, setSalesToday] = useState(0);
   const [profitToday, setProfitToday] = useState(0);
@@ -45,15 +53,7 @@ export default function Dashboard({ branches, onGo }) {
     const timer = setInterval(load, 60000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function windows() {
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-    return { now, todayStart, fourHoursAgo };
-  }
+  }, [pickedDate]); // Reload when the date changes
 
   async function load() {
     if (!branches || branches.length === 0) {
@@ -64,31 +64,37 @@ export default function Dashboard({ branches, onGo }) {
     setError('');
 
     try {
-      const { now, todayStart, fourHoursAgo } = windows();
+      const now = new Date();
       const todayStr = todayString();
+      const isToday = pickedDate === todayStr;
 
-      // Fetch sales, profit, and product breakdown in parallel
-      const [today, products, profitData, branchProfits] = await Promise.all([
-        getSalesSince(null, todayStart.toISOString()),
-        getSalesByProduct(null, todayStr, todayStr),
-        getSalesProfit(null, todayStr, todayStr),
-        getProfitByBranch(todayStr, todayStr),
+      // Fetch data for the selected date
+      const [salesList, products, profitData, branchProfits] = await Promise.all([
+        getSales(null, pickedDate, pickedDate),
+        getSalesByProduct(null, pickedDate, pickedDate),
+        getSalesProfit(null, pickedDate, pickedDate),
+        getProfitByBranch(pickedDate, pickedDate),
       ]);
 
       const rows = branches.map((b) => {
-        const todayB = today.filter((s) => s.branch_id === b.id);
-        const tToday = todayB.reduce((sum, s) => sum + Number(s.total), 0);
+        const dayB = salesList.filter((s) => s.branch_id === b.id);
+        const tDay = dayB.reduce((sum, s) => sum + Number(s.total), 0);
 
-        const earlierToday = todayB.some((s) => new Date(s.created_at) < fourHoursAgo);
-        const recent = todayB.filter((s) => new Date(s.created_at) >= fourHoursAgo);
-        const quiet = earlierToday && recent.length === 0 && now.getHours() >= 10;
+        // "Quiet" logic only applies to today
+        let quiet = false;
+        if (isToday) {
+          const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+          const earlierToday = dayB.some((s) => new Date(s.created_at) < fourHoursAgo);
+          const recent = dayB.filter((s) => new Date(s.created_at) >= fourHoursAgo);
+          quiet = earlierToday && recent.length === 0 && now.getHours() >= 10;
+        }
 
         return {
           id: b.id,
           name: b.name,
           code: b.code,
-          sales: todayB.length,
-          takings: tToday,
+          sales: dayB.length,
+          takings: tDay,
           profit: branchProfits[b.id]?.profit || 0,
           quiet,
         };
@@ -96,10 +102,41 @@ export default function Dashboard({ branches, onGo }) {
 
       rows.sort((a, b) => b.takings - a.takings);
 
+      // Only fetch alerts (expiring/quiet) if looking at today
+      const found = [];
+      if (isToday) {
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartTime = todayStart.getTime();
+
+        for (const b of branches) {
+          const soon = await getExpiringSoon(b.id);
+          const expiringToday = soon.filter((p) => {
+            const exp = new Date(p.expiry_date);
+            exp.setHours(0, 0, 0, 0);
+            return exp.getTime() <= todayStartTime;
+          });
+
+          if (expiringToday.length > 0) {
+            found.push({
+              branchName: b.name,
+              message: expiringToday.length + (expiringToday.length === 1 ? ' product expiring today' : ' products expiring today'),
+              tone: 'urgent',
+            });
+          }
+
+          const row = rows.find((r) => r.id === b.id);
+          if (row && row.quiet) {
+            found.push({ branchName: b.name, message: 'no sales in the last 4 hours', tone: 'quiet' });
+          }
+        }
+      }
+
+      setAlerts(found);
       setBranchRows(rows);
       setByProduct(products);
-      setTotalToday(today.reduce((s, x) => s + Number(x.total), 0));
-      setSalesToday(today.length);
+      setTotalToday(salesList.reduce((s, x) => s + Number(x.total), 0));
+      setSalesToday(salesList.length);
       setProfitToday(profitData.profit);
       setLastRefresh(new Date());
     } catch (err) {
@@ -107,6 +144,10 @@ export default function Dashboard({ branches, onGo }) {
     }
 
     setLoading(false);
+  }
+
+  function pickToday() {
+    setPickedDate(todayString());
   }
 
   if (!branches || branches.length === 0) {
@@ -120,7 +161,7 @@ export default function Dashboard({ branches, onGo }) {
     );
   }
 
-  if (loading) return <div className="empty">Loading...</div>;
+  if (loading && !lastRefresh) return <div className="empty">Loading...</div>;
 
   const busiest = branchRows.length > 0 ? branchRows[0] : null;
 
@@ -139,16 +180,38 @@ export default function Dashboard({ branches, onGo }) {
         breadcrumb="Overview"
         title="Dashboard"
         actions={
-          <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--paper)', border: '1px solid var(--line)', padding: '4px 8px', borderRadius: 8 }}>
+              <CalendarIcon style={{ width: 16, height: 16, color: 'var(--muted)' }} />
+              <input
+                type="date"
+                value={pickedDate}
+                onChange={(e) => setPickedDate(e.target.value)}
+                style={{ border: 'none', background: 'transparent', padding: 0, width: 125, fontSize: 14 }}
+              />
+            </div>
+            {pickedDate !== todayString() && (
+              <button onClick={pickToday}>Today</button>
+            )}
             <button onClick={() => onGo('reports')}><TrendIcon /> Full reports</button>
             <button className="primary" onClick={() => onGo('branches')}><BranchesIcon /> Manage branches</button>
-          </>
+          </div>
         }
       />
 
       {error && <div className="error">{error}</div>}
 
-      {/* KPI CARDS - Cleaned up, no notes */}
+      {alerts.length > 0 && (
+        <div className="dash-alerts">
+          {alerts.map((a, i) => (
+            <div key={i} className={'dash-alert ' + (a.tone || '')}>
+              <span className="dash-alert-icon"><AlertTriangleIcon /></span>
+              <span><strong>{a.branchName}</strong> · {a.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -167,7 +230,7 @@ export default function Dashboard({ branches, onGo }) {
         <StatCard
           icon={<SalesIcon />}
           tone="violet"
-          label="Sales Today"
+          label="Total Sales"
           value={salesToday}
         />
 
@@ -179,11 +242,10 @@ export default function Dashboard({ branches, onGo }) {
         />
       </div>
 
-      {/* Branches table */}
       <SectionCard
         icon={<BranchesIcon />}
         title="Branches Performance"
-        count={branchRows.length + (branchRows.length === 1 ? ' branch · today' : ' branches · today')}
+        count={branchRows.length + (branchRows.length === 1 ? ' branch · ' : ' branches · ') + new Date(pickedDate + 'T00:00:00').toLocaleDateString()}
         padding={0}
       >
         <table>
@@ -214,13 +276,12 @@ export default function Dashboard({ branches, onGo }) {
         </table>
       </SectionCard>
 
-      {/* Product insights */}
       <div className="side-by-side equal" style={{ marginTop: 24 }}>
-        <SectionCard icon={<TrendIcon />} title="Top Selling Products" count="Today · by quantity">
-          {topSellers.length > 0 ? <RankChart rows={topSellers} /> : <div className="empty small-text">No products sold yet today.</div>}
+        <SectionCard icon={<TrendIcon />} title="Top Selling Products" count="By quantity">
+          {topSellers.length > 0 ? <RankChart rows={topSellers} /> : <div className="empty small-text">No products sold on this date.</div>}
         </SectionCard>
 
-        <SectionCard icon={<PackageIcon />} title="Revenue by Product" count="Today · all branches" padding={0}>
+        <SectionCard icon={<PackageIcon />} title="Revenue by Product" count="All branches" padding={0}>
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             <table>
               <thead>
@@ -240,13 +301,13 @@ export default function Dashboard({ branches, onGo }) {
                 ))}
               </tbody>
             </table>
-            {byProduct.length === 0 && <div className="empty small-text">Nothing sold yet today.</div>}
+            {byProduct.length === 0 && <div className="empty small-text">Nothing sold on this date.</div>}
           </div>
         </SectionCard>
       </div>
 
       <div className="grey small-text" style={{ marginTop: 24 }}>
-        Updated {lastRefresh.toLocaleTimeString()} · refreshes every minute
+        Updated {lastRefresh.toLocaleTimeString()}
       </div>
     </div>
   );
