@@ -1,41 +1,48 @@
 // ============================================================
-// Reports.jsx — how the shop is doing
+// Reports.jsx — analytics and charts
 // ============================================================
 
 import { useState, useEffect } from 'react';
 import {
   getSalesSince,
-  getBestSellers,
+  getSalesByProduct,
   getSalesByCategory,
   getBusiestHours,
   getPaymentSplit,
   getLowStock,
   getExpiringSoon,
-  getSalesProfit, // <--- Added this
 } from '../database';
 import { money, shortDate, daysUntil } from '../money';
+
+import { PageHeader, StatCard, SectionCard } from '../components/Ui';
+import {
+  SalesIcon,
+  WalletIcon,
+  TrendIcon,
+  TagIcon,
+  PackageIcon,
+} from '../components/Icons';
 
 import RankChart from '../components/RankChart';
 import DonutChart from '../components/DonutChart';
 import HoursChart from '../components/HoursChart';
 
 export default function Reports({ branchId, user, branches }) {
+  const canPickBranch = user && user.role === 'owner' && branches && branches.length > 0;
+  const [view, setView] = useState(canPickBranch ? 'all' : branchId);
+  const queryBranchId = view === 'all' ? null : view;
+
   const [sales, setSales] = useState([]);
-  const [days, setDays] = useState(1);
-  const [bestSellers, setBestSellers] = useState([]);
+  const [byProduct, setByProduct] = useState([]);
   const [byCategory, setByCategory] = useState([]);
   const [byHour, setByHour] = useState([]);
   const [payments, setPayments] = useState([]);
   const [lowStock, setLowStock] = useState([]);
   const [expiring, setExpiring] = useState([]);
-  const [profit, setProfit] = useState(0); // <--- Added this
+  
+  const [days, setDays] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-
-  const canPickBranch =
-    user && user.role === 'owner' && branches && branches.length > 0;
-  const [view, setView] = useState(canPickBranch ? 'all' : branchId);
-  const queryBranchId = view === 'all' ? null : view;
 
   useEffect(() => {
     load();
@@ -43,20 +50,19 @@ export default function Reports({ branchId, user, branches }) {
   }, [days, view]);
 
   function startOfPeriod() {
+    // Defensive check to prevent "Invalid time value" crashes
+    const d = Number(days) || 1;
     const start = new Date();
-    start.setDate(start.getDate() - (days - 1));
+    start.setDate(start.getDate() - (d - 1));
     start.setHours(0, 0, 0, 0);
     return start.toISOString();
   }
 
   async function load() {
-    if (queryBranchId === undefined || queryBranchId === null && !canPickBranch) {
-      if (!canPickBranch && !branchId) {
-        setLoading(false);
-        return;
-      }
+    if (!canPickBranch && !branchId) {
+      setLoading(false);
+      return;
     }
-
     setLoading(true);
     setError('');
 
@@ -64,15 +70,25 @@ export default function Reports({ branchId, user, branches }) {
       const since = startOfPeriod();
       const b = queryBranchId;
 
-      setSales(await getSalesSince(b, since));
-      setBestSellers(await getBestSellers(b, since));
-      setByCategory(await getSalesByCategory(b, since));
-      setByHour(await getBusiestHours(b, since));
-      setPayments(await getPaymentSplit(b, since));
-      
-      // Fetch profit here
-      const profitData = await getSalesProfit(b, since);
-      setProfit(profitData.profit);
+      const [
+        salesData, 
+        productData, 
+        categoryData, 
+        hourData, 
+        paymentData
+      ] = await Promise.all([
+        getSalesSince(b, since),
+        getSalesByProduct(b, since, null),
+        getSalesByCategory(b, since),
+        getBusiestHours(b, since),
+        getPaymentSplit(b, since),
+      ]);
+
+      setSales(salesData);
+      setByProduct(productData);
+      setByCategory(categoryData);
+      setByHour(hourData);
+      setPayments(paymentData);
 
       if (b) {
         setLowStock(await getLowStock(b));
@@ -84,123 +100,75 @@ export default function Reports({ branchId, user, branches }) {
     } catch (err) {
       setError(err.message);
     }
-
     setLoading(false);
   }
 
   if (!canPickBranch && !branchId) {
     return (
       <div>
-        <h1>Reports</h1>
-        <div className="box">
-          <p style={{ margin: 0 }}>
-            There is no branch to show yet. Go to <strong>Branches</strong> on
-            the menu and add one, then come back here.
-          </p>
-        </div>
+        <PageHeader breadcrumb="Analytics" title="Reports" />
+        <div className="box"><p>There is no branch to show yet. Go to Branches and add one.</p></div>
       </div>
     );
   }
 
-  // ---------- aggregate the numbers ----------
   let takings = 0;
   let givenAway = 0;
+  let totalProfit = 0;
+
   for (const sale of sales) {
-    takings = takings + Number(sale.total);
-    givenAway =
-      givenAway + Number(sale.discount || 0) + Number(sale.item_discount || 0);
+    takings += Number(sale.total);
+    givenAway += Number(sale.discount || 0) + Number(sale.item_discount || 0);
   }
 
-  const periodLabel =
-    days === 1 ? 'Today' : days === 7 ? 'Last 7 days' : 'Last 30 days';
+  for (const p of byProduct) {
+    totalProfit += p.total_profit;
+  }
 
+  const periodLabel = days === 1 ? 'Today' : days === 7 ? 'Last 7 days' : 'Last 30 days';
   const isAllView = view === 'all';
 
-  // ---------- per-branch breakdown (only in the all view) ----------
-  let chainRows = [];
-  if (isAllView) {
-    const byBranch = {};
+  const topSellers = [...byProduct]
+    .sort((a, b) => b.quantity_sold - a.quantity_sold)
+    .slice(0, 5)
+    .map((p) => ({
+      label: p.product_name,
+      amount: p.funds_received,
+      extra: p.quantity_sold + ' sold',
+    }));
 
-    for (const sale of sales) {
-      const key = sale.branch_id;
-      if (!byBranch[key]) {
-        byBranch[key] = { id: key, sales: 0, takings: 0 };
-      }
-      byBranch[key].sales += 1;
-      byBranch[key].takings += Number(sale.total);
-    }
+  const topProfit = [...byProduct]
+    .sort((a, b) => b.total_profit - a.total_profit)
+    .slice(0, 5)
+    .map((p) => ({
+      label: p.product_name,
+      amount: p.total_profit,
+      extra: p.quantity_sold + ' sold',
+    }));
 
-    chainRows = branches.map((b) => {
-      const row = byBranch[b.id] || { sales: 0, takings: 0 };
-      return {
-        id: b.id,
-        name: b.name,
-        code: b.code,
-        sales: row.sales,
-        takings: row.takings,
-        average: row.sales > 0 ? row.takings / row.sales : 0,
-      };
-    });
-
-    chainRows.sort((a, b) => b.takings - a.takings);
-  }
-
-  const chainBest = chainRows.length > 0 ? chainRows[0] : null;
-
-  const selectedBranch = branches
-    ? branches.find((b) => b.id === view)
-    : null;
-  const reportLabel = isAllView
-    ? 'All branches'
-    : selectedBranch
-    ? selectedBranch.name
-    : 'Reports';
+  const selectedBranch = branches ? branches.find((b) => b.id === view) : null;
+  const reportLabel = isAllView ? 'All branches' : selectedBranch ? selectedBranch.name : 'Reports';
 
   return (
     <div>
-      <div className="reports-head">
-        <h1 style={{ margin: 0 }}>
-          Reports
-          {canPickBranch && (
-            <span
-              className="grey"
-              style={{ fontSize: 15, fontWeight: 400, marginLeft: 10 }}
-            >
-              · {reportLabel}
-            </span>
-          )}
-        </h1>
-
-        <div className="period-choice">
-          <button className={days === 1 ? 'on' : ''} onClick={() => setDays(1)}>
-            Today
-          </button>
-          <button className={days === 7 ? 'on' : ''} onClick={() => setDays(7)}>
-            7 days
-          </button>
-          <button className={days === 30 ? 'on' : ''} onClick={() => setDays(30)}>
-            30 days
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb="Analytics / Reports"
+        title="Reports"
+        subtitle={canPickBranch ? `Viewing: ${reportLabel}` : 'Store performance analytics.'}
+        actions={
+          <div className="period-choice">
+            <button className={days === 1 ? 'on' : ''} onClick={() => setDays(1)}>Today</button>
+            <button className={days === 7 ? 'on' : ''} onClick={() => setDays(7)}>7 days</button>
+            <button className={days === 30 ? 'on' : ''} onClick={() => setDays(30)}>30 days</button>
+          </div>
+        }
+      />
 
       {canPickBranch && (
         <div className="branch-tabs">
-          <button
-            className={isAllView ? 'on' : ''}
-            onClick={() => setView('all')}
-          >
-            All branches
-          </button>
-
+          <button className={isAllView ? 'on' : ''} onClick={() => setView('all')}>All branches</button>
           {branches.map((b) => (
-            <button
-              key={b.id}
-              className={view === b.id ? 'on' : ''}
-              onClick={() => setView(b.id)}
-            >
-              {b.name}
-            </button>
+            <button key={b.id} className={view === b.id ? 'on' : ''} onClick={() => setView(b.id)}>{b.name}</button>
           ))}
         </div>
       )}
@@ -208,284 +176,72 @@ export default function Reports({ branchId, user, branches }) {
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">Loading...</div>}
 
-      {/* ============================================================
-          ALL BRANCHES: chain cards + per-branch table
-          ============================================================ */}
-      {isAllView && (
-        <>
-          <div className="cards">
-            <div className="card">
-              <div className="label">Chain takings · {periodLabel.toLowerCase()}</div>
-              <div className="value number">{money(takings)}</div>
-            </div>
-            <div className="card">
-              <div className="label">Chain sales</div>
-              <div className="value number">{sales.length}</div>
-            </div>
-            <div className="card">
-              <div className="label">Busiest branch</div>
-              <div className="value" style={{ fontSize: 18 }}>
-                {chainBest && chainBest.takings > 0 ? chainBest.name : '—'}
-              </div>
-            </div>
-            <div className="card">
-              <div className="label">Average per branch</div>
-              <div className="value number">
-                {money(chainRows.length > 0 ? takings / chainRows.length : 0)}
-              </div>
-            </div>
-          </div>
+      {/* KPI Cards */}
+      <div className="stat-grid">
+        <StatCard
+          icon={<WalletIcon />}
+          tone="blue"
+          label={`Takings · ${periodLabel}`}
+          value={money(takings)}
+        />
+        <StatCard
+          icon={<SalesIcon />}
+          tone="violet"
+          label="Sales"
+          value={sales.length}
+        />
+        <StatCard
+          icon={<TrendIcon />}
+          tone="green"
+          label="Profit"
+          value={money(totalProfit)}
+        />
+        <StatCard
+          icon={<TagIcon />}
+          tone="amber"
+          label="Discounts"
+          value={money(givenAway)}
+        />
+      </div>
 
-          <div className="box" style={{ marginBottom: 20 }}>
-            <h2>Branches side by side</h2>
-            <p className="chart-note">{periodLabel}</p>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Branch</th>
-                  <th className="right">Sales</th>
-                  <th className="right">Takings</th>
-                  <th className="right">Average sale</th>
-                  <th className="right">Share of chain</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chainRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      {row.name}
-                      {row.code && (
-                        <span
-                          className="grey small-text number"
-                          style={{ marginLeft: 6 }}
-                        >
-                          {row.code}
-                        </span>
-                      )}
-                    </td>
-                    <td className="right number">{row.sales}</td>
-                    <td className="right number">{money(row.takings)}</td>
-                    <td className="right number">{money(row.average)}</td>
-                    <td className="right number">
-                      {takings > 0
-                        ? Math.round((row.takings / takings) * 100) + '%'
-                        : '0%'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--ink)' }}>
-                  <td>
-                    <strong>Total</strong>
-                  </td>
-                  <td className="right number">
-                    <strong>{sales.length}</strong>
-                  </td>
-                  <td className="right number">
-                    <strong>{money(takings)}</strong>
-                  </td>
-                  <td className="right number">
-                    <strong>
-                      {money(sales.length > 0 ? takings / sales.length : 0)}
-                    </strong>
-                  </td>
-                  <td className="right number">
-                    <strong>100%</strong>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-
-            {chainRows.length === 0 && (
-              <div className="empty small-text">No branches yet.</div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* ============================================================
-          ONE BRANCH: the four cards an admin sees
-          ============================================================ */}
-      {!isAllView && (
-        <div className="cards">
-          <div className="card">
-            <div className="label">Takings · {periodLabel.toLowerCase()}</div>
-            <div className="value number">{money(takings)}</div>
-          </div>
-          <div className="card">
-            <div className="label">Sales</div>
-            <div className="value number">{sales.length}</div>
-          </div>
-          
-          {/* CHANGED: Average Sale is now Profit */}
-          <div className="card">
-            <div className="label">Profit</div>
-            <div className="value number" style={{ color: 'var(--green)' }}>
-              {money(profit)}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="label">Discounts</div>
-            <div
-              className="value number"
-              style={{ color: givenAway > 0 ? 'var(--red)' : '' }}
-            >
-              {money(givenAway)}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================
-          Charts — same in both views
-          ============================================================ */}
+      {/* Row 1: Category & Best Sellers */}
       <div className="side-by-side equal">
-        <div className="box">
-          <h2>Sales by category</h2>
-          <p className="chart-note">
-            {periodLabel}
-            {isAllView ? ' · all branches' : ''}
-          </p>
-          <DonutChart
-            slices={byCategory.map((row) => ({
-              name: row.name,
-              money: row.money,
-            }))}
-          />
-        </div>
+        <SectionCard icon={<PackageIcon />} title="Sales by category">
+          <p className="chart-note">{periodLabel} {isAllView ? '· all branches' : ''}</p>
+          <DonutChart slices={byCategory.map((r) => ({ name: r.name, money: r.money }))} />
+        </SectionCard>
 
-        <div className="box">
-          <h2>Best sellers</h2>
-          <p className="chart-note">
-            Top 5 · {periodLabel.toLowerCase()}
-            {isAllView ? ' · all branches' : ''}
-          </p>
-          <RankChart
-            rows={bestSellers.slice(0, 5).map((row) => ({
-              label: row.name,
-              amount: row.money,
-              extra: row.sold + ' sold',
-            }))}
-          />
-        </div>
+        <SectionCard icon={<TrendIcon />} title="Best sellers">
+          <p className="chart-note">Top 5 · {periodLabel.toLowerCase()}</p>
+          <RankChart rows={topSellers} />
+        </SectionCard>
       </div>
 
-      <div className="box" style={{ marginTop: 20 }}>
-        <h2>Busiest times of day</h2>
-        <p className="chart-note">
-          {periodLabel}
-          {isAllView ? ' · all branches combined' : ''}. This is the one that
-          changes how the shop is run — it says when two people are needed on
-          the till.
-        </p>
-        <HoursChart hours={byHour} />
+      {/* Row 2: Busiest Times & Most Profitable */}
+      <div className="side-by-side equal" style={{ marginTop: 20 }}>
+        <SectionCard icon={<TrendIcon />} title="Busiest times of day">
+          <p className="chart-note">
+            {periodLabel} {isAllView ? '· all branches' : ''}. Peak hours.
+          </p>
+          <HoursChart hours={byHour} />
+        </SectionCard>
+
+        <SectionCard icon={<WalletIcon />} title="Most Profitable Products">
+          <p className="chart-note">Top 5 by profit · {periodLabel.toLowerCase()}</p>
+          {topProfit.length > 0 ? (
+            <RankChart rows={topProfit} />
+          ) : (
+            <div className="empty small-text">No profit data yet.</div>
+          )}
+        </SectionCard>
       </div>
 
+      {/* Row 3: Payments */}
       {payments.length > 0 && (
-        <div className="box" style={{ marginTop: 20 }}>
-          <h2>How customers paid</h2>
-          <p className="chart-note">
-            {periodLabel}
-            {isAllView ? ' · all branches' : ''}
-          </p>
-          <DonutChart
-            slices={payments.map((row) => ({
-              name: row.name === 'qr' ? 'QR code' : 'Cash',
-              money: row.money,
-            }))}
-          />
-        </div>
-      )}
-
-      {/* ============================================================
-          Warnings — only in the single-branch view
-          ============================================================ */}
-      {!isAllView && (
-        <div className="side-by-side equal" style={{ marginTop: 20 }}>
-          <div className="box" style={{ padding: 0 }}>
-            <h2 style={{ padding: '16px 18px 0' }}>Running low</h2>
-            <table>
-              <tbody>
-                {lowStock.map((product) => (
-                  <tr key={product.id}>
-                    <td>{product.name}</td>
-                    <td className="right">
-                      <span
-                        className={
-                          product.stock_quantity === 0
-                            ? 'tag out number'
-                            : 'tag warning number'
-                        }
-                      >
-                        {product.stock_quantity === 0
-                          ? 'out'
-                          : product.stock_quantity + ' left'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {lowStock.length === 0 && (
-              <div className="empty small-text">Everything is stocked up.</div>
-            )}
-          </div>
-
-          <div className="box" style={{ padding: 0 }}>
-            <h2 style={{ padding: '16px 18px 0' }}>Expiring soon</h2>
-            <p className="chart-note" style={{ padding: '0 18px' }}>
-              Marked down automatically: 50% off inside 14 days, 75% inside 7.
-            </p>
-            <table>
-              <tbody>
-                {expiring.map((product) => {
-                  const days = daysUntil(product.expiry_date);
-
-                  return (
-                    <tr key={product.id}>
-                      <td>
-                        {product.name}
-                        <div className="grey small-text">
-                          {shortDate(product.expiry_date)}
-                        </div>
-                      </td>
-                      <td className="right">
-                        {product.clearance_percent > 0 && (
-                          <div className="clearance-price number">
-                            {money(product.price_today)}
-                            <span className="was">
-                              {' '}
-                              {money(product.selling_price)}
-                            </span>
-                          </div>
-                        )}
-                        <span className={days < 0 ? 'tag out' : 'tag warning'}>
-                          {days < 0 ? 'expired' : days + ' days'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {expiring.length === 0 && (
-              <div className="empty small-text">Nothing expiring soon.</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {isAllView && (
-        <div className="box" style={{ marginTop: 20 }}>
-          <p style={{ margin: 0 }} className="grey small-text">
-            Low-stock and expiry warnings are per branch — a product can be out
-            at one shop and stocked at another. Pick a branch above to see its
-            warnings.
-          </p>
-        </div>
+        <SectionCard icon={<SalesIcon />} title="How customers paid" style={{ marginTop: 20 }}>
+          <p className="chart-note">{periodLabel} {isAllView ? '· all branches' : ''}</p>
+          <DonutChart slices={payments.map((r) => ({ name: r.name === 'qr' ? 'QR code' : 'Cash', money: r.money }))} />
+        </SectionCard>
       )}
     </div>
   );
