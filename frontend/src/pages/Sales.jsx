@@ -1,15 +1,5 @@
 // ============================================================
 // Sales.jsx — every sale, and what actually sold
-//
-// KPI cards:
-//
-//   Total Sales   the count of completed sales
-//   Total Intake  money that actually came in (revenue)
-//   Profit        intake minus cost of goods sold
-//   Discounts     money given away
-//
-// One date picker, defaulting to today. Every filter narrows
-// both the product summary and the invoice list.
 // ============================================================
 
 import { useState, useEffect } from 'react';
@@ -107,7 +97,6 @@ export default function Sales({ user, branchId, branches }) {
     return row.product_name.toLowerCase().includes(search.toLowerCase());
   });
 
-  // ---------- KPI numbers ----------
   let totalIntake = 0;
   let discounts = 0;
   let completed = 0;
@@ -142,9 +131,6 @@ export default function Sales({ user, branchId, branches }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* ============================================================
-          KPI CARDS
-          ============================================================ */}
       <div className="stat-grid">
         <StatCard
           icon={<SalesIcon />}
@@ -172,7 +158,6 @@ export default function Sales({ user, branchId, branches }) {
         />
       </div>
 
-      {/* ---------- filter bar ---------- */}
       <div
         className="box"
         style={{
@@ -238,9 +223,6 @@ export default function Sales({ user, branchId, branches }) {
         )}
       </div>
 
-      {/* ============================================================
-          SALES BY PRODUCT
-          ============================================================ */}
       <SectionCard
         icon={<PackageIcon />}
         title="Sales by product"
@@ -294,9 +276,6 @@ export default function Sales({ user, branchId, branches }) {
         )}
       </SectionCard>
 
-      {/* ============================================================
-          INVOICE LIST
-          ============================================================ */}
       <SectionCard
         icon={<SalesIcon />}
         title="Invoice"
