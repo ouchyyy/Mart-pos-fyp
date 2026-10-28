@@ -131,6 +131,7 @@ export default function Sales({ user, branchId, branches }) {
 
       {error && <div className="error">{error}</div>}
 
+      {/* 4 KPI CARDS */}
       <div className="stat-grid">
         <StatCard
           icon={<SalesIcon />}
@@ -147,7 +148,7 @@ export default function Sales({ user, branchId, branches }) {
         <StatCard
           icon={<TrendIcon />}
           tone="green"
-          label="Profit"
+          label="Total Profit"
           value={money(profitData.profit)}
         />
         <StatCard
@@ -223,6 +224,7 @@ export default function Sales({ user, branchId, branches }) {
         )}
       </div>
 
+      {/* SALES BY PRODUCT TABLE */}
       <SectionCard
         icon={<PackageIcon />}
         title="Sales by product"
@@ -236,7 +238,7 @@ export default function Sales({ user, branchId, branches }) {
               <th className="right">Unit price</th>
               <th className="right">Discount / unit</th>
               <th className="right">Quantity sold</th>
-              <th className="right">Funds received</th>
+              <th className="right">Profit</th> {/* Changed from Funds received */}
             </tr>
           </thead>
           <tbody>
@@ -259,8 +261,8 @@ export default function Sales({ user, branchId, branches }) {
                     : money(0)}
                 </td>
                 <td className="right number">{row.quantity_sold}</td>
-                <td className="right number total-cell">
-                  {money(row.funds_received)}
+                <td className="right number total-cell" style={{ color: row.total_profit < 0 ? 'var(--red)' : 'var(--green)' }}>
+                  {money(row.total_profit)} {/* Changed from row.funds_received */}
                 </td>
               </tr>
             ))}
@@ -276,6 +278,7 @@ export default function Sales({ user, branchId, branches }) {
         )}
       </SectionCard>
 
+      {/* INVOICE TABLE */}
       <SectionCard
         icon={<SalesIcon />}
         title="Invoice"
