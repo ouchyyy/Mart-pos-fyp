@@ -148,6 +148,7 @@ export default function Dashboard({ branches, onGo }) {
 
       {error && <div className="error">{error}</div>}
 
+      {/* KPI CARDS - Cleaned up, no notes */}
       <div className="stat-grid">
         <StatCard
           icon={<WalletIcon />}
@@ -178,7 +179,7 @@ export default function Dashboard({ branches, onGo }) {
         />
       </div>
 
-      {/* ---------- branches ---------- */}
+      {/* Branches table */}
       <SectionCard
         icon={<BranchesIcon />}
         title="Branches Performance"
@@ -213,7 +214,7 @@ export default function Dashboard({ branches, onGo }) {
         </table>
       </SectionCard>
 
-      {/* ---------- product insights ---------- */}
+      {/* Product insights */}
       <div className="side-by-side equal" style={{ marginTop: 24 }}>
         <SectionCard icon={<TrendIcon />} title="Top Selling Products" count="Today · by quantity">
           {topSellers.length > 0 ? <RankChart rows={topSellers} /> : <div className="empty small-text">No products sold yet today.</div>}
