@@ -1,9 +1,5 @@
 // ============================================================
-// Icons.jsx — every icon the app uses
-//
-// Twenty-four named exports. Every one is a plain <svg> using
-// currentColor, so it takes the colour of the text beside it.
-// No library, no font, no per-icon styling.
+// Icons.jsx — small line icons for the menu and every page
 // ============================================================
 
 const base = {
@@ -16,9 +12,6 @@ const base = {
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
 };
-
-
-/* ---------- sidebar & page icons ---------- */
 
 export function DashboardIcon() {
   return (
@@ -126,9 +119,6 @@ export function SignOutIcon() {
   );
 }
 
-
-/* ---------- utility icons ---------- */
-
 export function PlusIcon() {
   return (
     <svg {...base}>
@@ -156,6 +146,14 @@ export function SearchIcon2() {
   );
 }
 
+export function ChevronDownIcon() {
+  return (
+    <svg {...base}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export function ChevronLeftIcon() {
   return (
     <svg {...base}>
@@ -168,14 +166,6 @@ export function ChevronRightIcon() {
   return (
     <svg {...base}>
       <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-
-export function ChevronDownIcon() {
-  return (
-    <svg {...base}>
-      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
@@ -245,9 +235,6 @@ export function SunIcon() {
   );
 }
 
-
-/* ---------- staff page icons ---------- */
-
 export function ShieldIcon() {
   return (
     <svg {...base}>
@@ -279,9 +266,6 @@ export function UsersIcon() {
     </svg>
   );
 }
-
-
-/* ---------- movements submenu icons ---------- */
 
 export function ArrowDownIcon() {
   return (
@@ -342,17 +326,6 @@ export function RotateIcon() {
   );
 }
 
-export function ReceiptIcon() {
-  return (
-    <svg {...base}>
-      <path d="M5 3v18l3-2 3 2 3-2 3 2 3-2V3H5z" />
-      <path d="M9 8h6" />
-      <path d="M9 12h6" />
-      <path d="M9 16h3" />
-    </svg>
-  );
-}
-
 export function PackageIcon() {
   return (
     <svg {...base}>
@@ -361,6 +334,16 @@ export function PackageIcon() {
       <path d="M21 12v10H3V12" />
       <path d="M12 2 3 7l9 5 9-5z" />
       <path d="M12 12v10" />
+    </svg>
+  );
+}
+
+// The missing icon that caused the build to fail
+export function TagIcon() {
+  return (
+    <svg {...base}>
+      <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V4a2 2 0 0 1 2-2h8l8.59 8.59a2 2 0 0 1 0 2.82z" />
+      <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }
