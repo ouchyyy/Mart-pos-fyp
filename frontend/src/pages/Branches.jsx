@@ -56,7 +56,6 @@ export default function Branches() {
       <PageHeader
         breadcrumb="Master data / Branches"
         title="Branches"
-        subtitle="Manage every shop location where your chain sells and stocks."
         actions={
           <button className="primary" onClick={() => setEditing({})}>
             <PlusIcon /> Add branch
