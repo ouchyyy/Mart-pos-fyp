@@ -372,6 +372,14 @@ export default function Stock({ branchId }) {
           product={showBatchesOf}
           branchId={branchId}
           onClose={() => setShowBatchesOf(null)}
+          onChanged={() => {
+            // Refresh the main table when a batch is written off
+            loadProducts();
+            // If the left form is also on this product, refresh its batches too
+            if (productId === String(showBatchesOf.id)) {
+              getBatches(Number(showBatchesOf.id), branchId).then(setBatches);
+            }
+          }}
         />
       )}
     </div>
