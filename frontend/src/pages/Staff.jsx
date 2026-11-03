@@ -133,11 +133,7 @@ export default function Staff({ user, branchId }) {
       <PageHeader
         breadcrumb="Setting / Staff"
         title="Staff"
-        subtitle={
-          isOwner
-            ? 'Everyone who works at any of your branches, and what they may do.'
-            : 'Everyone at this branch, and what they may do.'
-        }
+        
         actions={
           <button className="primary" onClick={() => setShowAdd(true)}>
             <PlusIcon /> Add staff
