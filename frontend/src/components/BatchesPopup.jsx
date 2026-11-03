@@ -1,50 +1,58 @@
 // ============================================================
 // BatchesPopup.jsx — the batches one product is made up of
-//
-// A product shows one number in the list, but that number is
-// added up from separate deliveries. This shows them apart, with
-// the expiry date of each, in the order they will be sold.
-//
-// It needs both a product ID and a branch ID. If either is
-// missing (for example, a new admin who has not been assigned a
-// branch yet), it shows a message instead of querying.
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { getBatches } from '../database';
+import { getBatches, takeStock } from '../database';
 import { money, shortDate, daysUntil } from '../money';
 
-export default function BatchesPopup({ product, branchId, onClose }) {
+export default function BatchesPopup({ product, branchId, onClose, onChanged }) {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
-    if (!product || !product.id) {
-      setError('Missing product information.');
-      setLoading(false);
-      return;
-    }
+    loadBatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id, branchId]);
 
-    if (!branchId) {
-      setError('Missing branch information. Please select a branch from the menu.');
-      setLoading(false);
-      return;
-    }
-
+  async function loadBatches() {
     setLoading(true);
-    getBatches(product.id, branchId)
-      .then((list) => setBatches(list))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [product?.id, branchId]);
+    try {
+      const list = await getBatches(product.id, branchId);
+      setBatches(list);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  }
+
+  async function writeOff(batch) {
+    const sure = window.confirm(
+      `Write off ${batch.quantity_left} units of ${product.name}? This will remove them from stock.`
+    );
+    if (!sure) return;
+
+    setBusyId(batch.id);
+    setError('');
+
+    try {
+      await takeStock(product.id, branchId, batch.quantity_left, 'expired', 'Batch expired');
+      await loadBatches();
+      if (onChanged) onChanged();
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusyId(null);
+  }
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="popup" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-        <h2>{product?.name || 'Batches'}</h2>
+      <div className="popup" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+        <h2>{product.name}</h2>
         <p className="grey small-text" style={{ marginTop: 0 }}>
-          {product?.stock_quantity || 0} in stock at this branch, across {batches.length}{' '}
+          {product.stock_quantity} in stock at this branch, across {batches.length}{' '}
           {batches.length === 1 ? 'batch' : 'batches'}. The top one is sold first.
         </p>
 
@@ -61,6 +69,7 @@ export default function BatchesPopup({ product, branchId, onClose }) {
                   <th>Expires</th>
                   <th className="right">Cost</th>
                   <th className="right">Left</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -88,6 +97,15 @@ export default function BatchesPopup({ product, branchId, onClose }) {
                       <td className="right number">{money(batch.cost_price)}</td>
                       <td className="right number">
                         {batch.quantity_left} of {batch.quantity_received}
+                      </td>
+                      <td className="right">
+                        <button
+                          className="small danger"
+                          onClick={() => writeOff(batch)}
+                          disabled={busyId === batch.id}
+                        >
+                          {busyId === batch.id ? '...' : 'Write off'}
+                        </button>
                       </td>
                     </tr>
                   );
