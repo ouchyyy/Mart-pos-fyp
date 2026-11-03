@@ -41,3 +41,5 @@ export function RotateIcon() { return (<svg {...base}><path d="M3 12a9 9 0 1 0 3
 export function PackageIcon() { return (<svg {...base}><path d="M16 16v6" /><path d="M8 10v6" /><path d="M21 12v10H3V12" /><path d="M12 2 3 7l9 5 9-5z" /><path d="M12 12v10" /></svg>); }
 export function TagIcon() { return (<svg {...base}><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V4a2 2 0 0 1 2-2h8l8.59 8.59a2 2 0 0 1 0 2.82z" /><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none" /></svg>); }
 export function ClockIcon() { return (<svg {...base}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>); }
+export function FilterIcon() { return (<svg {...base}><path d="M3 4h18" /><path d="M6 12h12" /><path d="M10 20h4" /></svg>); }
+export function BoxIcon() { return (<svg {...base}><path d="M3 8h18v12H3z" /><path d="M3 8l2-4h14l2 4" /><path d="M10 12h4" /></svg>); }
