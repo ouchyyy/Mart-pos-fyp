@@ -37,6 +37,7 @@ export default function Sales({ user, branchId, branches }) {
   const [loading, setLoading] = useState(true);
 
   const isOwner = user.role === 'owner';
+  const isCashier = user.role === 'cashier';
 
   useEffect(() => {
     load();
@@ -131,33 +132,37 @@ export default function Sales({ user, branchId, branches }) {
 
       {error && <div className="error">{error}</div>}
 
-      {/* 4 KPI CARDS */}
-      <div className="stat-grid">
-        <StatCard
-          icon={<SalesIcon />}
-          tone="blue"
-          label="Total Sales"
-          value={completed}
-        />
-        <StatCard
-          icon={<WalletIcon />}
-          tone="violet"
-          label="Total Intake"
-          value={money(totalIntake)}
-        />
-        <StatCard
-          icon={<TrendIcon />}
-          tone="green"
-          label="Total Profit"
-          value={money(profitData.profit)}
-        />
-        <StatCard
-          icon={<TagIcon />}
-          tone="amber"
-          label="Discounts"
-          value={money(discounts)}
-        />
-      </div>
+      {/* 🎓 DEFENSE NOTE: Hide the KPI cards for cashiers. 
+          Cashiers only need to see the list of transactions. 
+          The financial summaries (profit, total intake) are for management. */}
+      {!isCashier && (
+        <div className="stat-grid">
+          <StatCard
+            icon={<SalesIcon />}
+            tone="blue"
+            label="Total Sales"
+            value={completed}
+          />
+          <StatCard
+            icon={<WalletIcon />}
+            tone="violet"
+            label="Total Intake"
+            value={money(totalIntake)}
+          />
+          <StatCard
+            icon={<TrendIcon />}
+            tone="green"
+            label="Total Profit"
+            value={money(profitData.profit)}
+          />
+          <StatCard
+            icon={<TagIcon />}
+            tone="amber"
+            label="Discounts"
+            value={money(discounts)}
+          />
+        </div>
+      )}
 
       <div
         className="box"
@@ -238,7 +243,8 @@ export default function Sales({ user, branchId, branches }) {
               <th className="right">Unit price</th>
               <th className="right">Discount / unit</th>
               <th className="right">Quantity sold</th>
-              <th className="right">Profit</th> {/* Changed from Funds received */}
+              {/* Hide the "Profit" column for cashiers */}
+              {!isCashier && <th className="right">Profit</th>}
             </tr>
           </thead>
           <tbody>
@@ -261,9 +267,12 @@ export default function Sales({ user, branchId, branches }) {
                     : money(0)}
                 </td>
                 <td className="right number">{row.quantity_sold}</td>
-                <td className="right number total-cell" style={{ color: row.total_profit < 0 ? 'var(--red)' : 'var(--green)' }}>
-                  {money(row.total_profit)} {/* Changed from row.funds_received */}
-                </td>
+                {/* Hide the "Profit" data for cashiers */}
+                {!isCashier && (
+                  <td className="right number total-cell" style={{ color: row.total_profit < 0 ? 'var(--red)' : 'var(--green)' }}>
+                    {money(row.total_profit)}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
